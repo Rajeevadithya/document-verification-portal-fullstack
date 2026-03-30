@@ -9,6 +9,7 @@ PUT  /api/po/<po_number>/documents/<doc_id>/change – replace PO document
 GET  /api/po/<po_number>/documents         – view active PO document
 GET  /api/po/documents/<doc_id>/download   – download PO document
 """
+from datetime import datetime
 import os
 from flask import Blueprint, request, send_file
 from app import mongo
@@ -153,3 +154,35 @@ def download_po_document(doc_id):
         as_attachment=not inline,
         download_name=doc["original_filename"]
     )
+
+@po_bp.route("/ingest", methods=["POST"])
+def ingest_po():
+    data = request.get_json()
+
+    if not data:
+        return error_response("No data received", 400)
+
+    po_doc = {
+        "po_number": data.get("po_number"),
+        "pr_number": data.get("pr_number"),
+        "document_type": data.get("document_type", "Standard PO"),
+        "purchase_organization": data.get("purchase_organization"),
+        "purchase_group": data.get("purchase_group"),
+        "company_code": data.get("company_code"),
+        "vendor": data.get("vendor"),
+        "status": data.get("status", "OPEN"),
+        "created_at": datetime.utcnow(),
+        "updated_at": datetime.utcnow(),
+        "items": data.get("items", [])
+    }
+
+    if not po_doc["po_number"]:
+        return error_response("po_number is required", 400)
+
+    mongo.db.purchase_orders.update_one(
+        {"po_number": po_doc["po_number"]},
+        {"$set": po_doc},
+        upsert=True
+    )
+
+    return success_response(po_doc, "PO ingested")

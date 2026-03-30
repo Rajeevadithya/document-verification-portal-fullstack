@@ -11,6 +11,7 @@ GET  /api/grn/documents/<doc_id>/download   – download GRN document
 """
 import os
 from flask import Blueprint, request, send_file
+from datetime import datetime
 from app import mongo
 from app.utils.helpers import (
     serialize_doc, success_response, error_response, allowed_file
@@ -147,3 +148,32 @@ def download_grn_document(doc_id):
         as_attachment=not inline,
         download_name=doc["original_filename"]
     )
+
+@grn_bp.route("/ingest", methods=["POST"])
+def ingest_grn():
+    data = request.get_json()
+
+    if not data:
+        return error_response("No data received", 400)
+
+    grn_doc = {
+        "grn_number": data.get("grn_number"),
+        "po_number": data.get("po_number"),
+        "document_date": data.get("document_date"),
+        "posting_date": data.get("posting_date"),
+        "status": data.get("status", "POSTED"),
+        "created_at": datetime.utcnow(),
+        "updated_at": datetime.utcnow(),
+        "items": data.get("items", [])
+    }
+
+    if not grn_doc["grn_number"]:
+        return error_response("grn_number is required", 400)
+
+    mongo.db.goods_receipts.update_one(
+        {"grn_number": grn_doc["grn_number"]},
+        {"$set": grn_doc},
+        upsert=True
+    )
+
+    return success_response(grn_doc, "GRN ingested")
