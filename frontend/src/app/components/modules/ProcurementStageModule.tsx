@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CheckCircle, Download, Edit, Eye, FileUp, LoaderCircle, Trash2, Upload, XCircle } from "lucide-react";
 import { FilterBar, type FilterValues } from "../FilterBar";
+import { useSearchParams } from "react-router";
 import {
   deleteDocument,
   getDocumentDownloadUrl,
@@ -193,14 +194,17 @@ function renderRow(row: FlattenedRow, stage: Exclude<FrontendStageKey, "INV">) {
 
 export function ProcurementStageModule({ config }: { config: StageModuleConfig }) {
   const stage = getStageFromFrontend(config.frontendStage);
-  const [subTab, setSubTab] = useState<"upload" | "change" | "view">("upload");
-  const [filters, setFilters] = useState<FilterValues>({ docNumber: "", plant: "", vendor: "", dateFrom: "", dateTo: "" });
+  const [searchParams] = useSearchParams();
+  const initialDocNumber = searchParams.get("doc") ?? "";
+  const initialAction = searchParams.get("action") as "upload" | "change" | "view" | null;
+  const [subTab, setSubTab] = useState<"upload" | "change" | "view">(initialAction ?? "upload");
+  const [filters, setFilters] = useState<FilterValues>({ docNumber: initialDocNumber, plant: "", vendor: "", dateFrom: "", dateTo: "" });
   const [valueHelpItems, setValueHelpItems] = useState<ValueHelpItem[]>([]);
   const [records, setRecords] = useState<Array<PRRecord | PORecord | GRNRecord>>([]);
   const [documentsByReference, setDocumentsByReference] = useState<Record<string, StageDocument[]>>({});
   const [selectedRows, setSelectedRows] = useState<string[]>([]);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
-  const [uploadDocNumber, setUploadDocNumber] = useState("");
+  const [uploadDocNumber, setUploadDocNumber] = useState(initialDocNumber);
   const [uploading, setUploading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -230,7 +234,7 @@ export function ProcurementStageModule({ config }: { config: StageModuleConfig }
       setValueHelpItems(helpers);
       setRecords(details);
       setDocumentsByReference(Object.fromEntries(docEntries));
-      if (!uploadDocNumber && helpers[0]?.id) setUploadDocNumber(helpers[0].id);
+      if (!uploadDocNumber && !initialDocNumber && helpers[0]?.id) setUploadDocNumber(helpers[0].id);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Unable to load data.");
     } finally {

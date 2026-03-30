@@ -24,6 +24,7 @@ def create_app():
     from .routes.invoice_verification import inv_bp
     from .routes.notifications import notif_bp
     from .routes.dashboard import dashboard_bp
+    from .routes.chatbot import chatbot_bp
 
     app.register_blueprint(master_data_bp, url_prefix="/api/master")
     app.register_blueprint(pr_bp,          url_prefix="/api/pr")
@@ -32,6 +33,7 @@ def create_app():
     app.register_blueprint(inv_bp,         url_prefix="/api/invoice")
     app.register_blueprint(notif_bp,       url_prefix="/api/notifications")
     app.register_blueprint(dashboard_bp,   url_prefix="/api/dashboard")
+    app.register_blueprint(chatbot_bp, url_prefix="/api/chatbot")
 
     @app.route("/api/health")
     def health():
