@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { CheckCircle, Download, Edit, Eye, FileUp, LoaderCircle, Trash2, Upload, XCircle } from "lucide-react";
+import { Download, Edit, Eye, FileUp, LoaderCircle, Trash2, Upload } from "lucide-react";
 import { FilterBar, type FilterValues } from "../FilterBar";
 import { useSearchParams } from "react-router";
 import {
@@ -14,6 +14,7 @@ import {
   uploadDocuments,
 } from "../../lib/api";
 import { formatCurrency, formatDate, formatFileSize, statusTone } from "../../lib/format";
+import { ModuleFooterAlerts, SelectionPlaceholder, SubTabPanel } from "./ModuleExperience";
 import type {
   FrontendStageKey,
   GRNRecord,
@@ -125,21 +126,6 @@ function flattenRecord(record: PRRecord | PORecord | GRNRecord, stage: Exclude<F
   return flattenGRN(record as GRNRecord);
 }
 
-function matchesDate(value: string, from: string, to: string) {
-  if (!from && !to) return true;
-  const current = new Date(value).getTime();
-  if (Number.isNaN(current)) return true;
-  if (from) {
-    const start = new Date(from).getTime();
-    if (!Number.isNaN(start) && current < start) return false;
-  }
-  if (to) {
-    const end = new Date(to).getTime();
-    if (!Number.isNaN(end) && current > end) return false;
-  }
-  return true;
-}
-
 function renderRow(row: FlattenedRow, stage: Exclude<FrontendStageKey, "INV">) {
   const cellStyle = { padding: "5px 10px", fontSize: "12px", color: "#32363a", borderRight: "1px solid #e5e5e5", whiteSpace: "nowrap" as const };
   if (stage === "PR") {
@@ -198,7 +184,7 @@ export function ProcurementStageModule({ config }: { config: StageModuleConfig }
   const initialDocNumber = searchParams.get("doc") ?? "";
   const initialAction = searchParams.get("action") as "upload" | "change" | "view" | null;
   const [subTab, setSubTab] = useState<"upload" | "change" | "view">(initialAction ?? "upload");
-  const [filters, setFilters] = useState<FilterValues>({ docNumber: initialDocNumber, plant: "", vendor: "", dateFrom: "", dateTo: "" });
+  const [filters, setFilters] = useState<FilterValues>({ docNumber: initialDocNumber, plant: "" });
   const [valueHelpItems, setValueHelpItems] = useState<ValueHelpItem[]>([]);
   const [records, setRecords] = useState<Array<PRRecord | PORecord | GRNRecord>>([]);
   const [documentsByReference, setDocumentsByReference] = useState<Record<string, StageDocument[]>>({});
@@ -210,9 +196,11 @@ export function ProcurementStageModule({ config }: { config: StageModuleConfig }
   const [error, setError] = useState<string | null>(null);
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
   const [lastValidation, setLastValidation] = useState<{ ocr_status: string; ocr_rejection_detail?: StageDocument["ocr_rejection_detail"] } | null>(null);
+  const [subTabTransitioning, setSubTabTransitioning] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const replaceInputRef = useRef<HTMLInputElement>(null);
   const replaceTargetRef = useRef<{ referenceNumber: string; documentId: string } | null>(null);
+  const initialRenderRef = useRef(true);
 
   const loadData = async () => {
     setLoading(true);
@@ -224,7 +212,7 @@ export function ProcurementStageModule({ config }: { config: StageModuleConfig }
       const docEntries = await Promise.all(
         details.map(async (detail) => {
           const reference = getReference(detail);
-          if (!reference) return [reference, []] as const;   // ← add this guard
+          if (!reference) return [reference, []] as const;
           const response = await listDocuments(stage, reference);
           const documents = "documents" in response ? response.documents : response.document ? [response.document] : [];
           return [reference, documents] as const;
@@ -234,7 +222,6 @@ export function ProcurementStageModule({ config }: { config: StageModuleConfig }
       setValueHelpItems(helpers);
       setRecords(details);
       setDocumentsByReference(Object.fromEntries(docEntries));
-      if (!uploadDocNumber && !initialDocNumber && helpers[0]?.id) setUploadDocNumber(helpers[0].id);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Unable to load data.");
     } finally {
@@ -247,6 +234,14 @@ export function ProcurementStageModule({ config }: { config: StageModuleConfig }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [config.frontendStage]);
 
+  useEffect(() => {
+    const nextDocNumber = searchParams.get("doc") ?? "";
+    const nextAction = searchParams.get("action") as "upload" | "change" | "view" | null;
+    setFilters((current) => ({ ...current, docNumber: nextDocNumber }));
+    setUploadDocNumber(nextDocNumber);
+    if (nextAction) setSubTab(nextAction);
+  }, [searchParams]);
+
   const plants = useMemo(() => {
     const values = new Set(
       records
@@ -256,35 +251,47 @@ export function ProcurementStageModule({ config }: { config: StageModuleConfig }
     return Array.from(values).sort();
   }, [config.frontendStage, records]);
 
-  const vendors = useMemo(() => {
-    if (config.frontendStage !== "PO") return [];
-    const values = new Set(
-      records
-        .flatMap((record) => flattenRecord(record, config.frontendStage).map((row) => row.vendor))
-        .filter((value): value is string => Boolean(value)),
-    );
-    return Array.from(values).sort();
-  }, [config.frontendStage, records]);
-
   const tableRows = useMemo(
     () => records.flatMap((record) => flattenRecord(record, config.frontendStage)).filter((row) => {
+      if (!filters.docNumber) return false;
       if (filters.docNumber && row.referenceNumber !== filters.docNumber) return false;
       if (filters.plant && row.plant !== filters.plant) return false;
-      if (filters.vendor && row.vendor !== filters.vendor) return false;
-      if (!matchesDate(row.date, filters.dateFrom, filters.dateTo)) return false;
       return true;
     }),
-    [config.frontendStage, filters.dateFrom, filters.dateTo, filters.docNumber, filters.plant, filters.vendor, records],
+    [config.frontendStage, filters.docNumber, filters.plant, records],
   );
 
   const filteredDocuments = useMemo(() => {
+    if (!filters.docNumber) return [];
     return Object.entries(documentsByReference)
-      .filter(([reference]) => !filters.docNumber || reference === filters.docNumber)
+      .filter(([reference]) => reference === filters.docNumber)
       .flatMap(([reference, docs]) => docs.map((document) => ({ ...document, referenceNumber: reference })))
       .sort((a, b) => new Date(b.uploaded_at).getTime() - new Date(a.uploaded_at).getTime());
   }, [documentsByReference, filters.docNumber]);
 
   const activeDocNumber = uploadDocNumber || filters.docNumber;
+  const hasSelectedReference = Boolean(filters.docNumber || activeDocNumber);
+
+  useEffect(() => {
+    if (initialRenderRef.current) {
+      initialRenderRef.current = false;
+      return;
+    }
+
+    setSubTabTransitioning(true);
+    const timeout = window.setTimeout(() => setSubTabTransitioning(false), 220);
+    return () => window.clearTimeout(timeout);
+  }, [subTab]);
+
+  const changeSubTab = (nextTab: "upload" | "change" | "view") => {
+    setSubTab(nextTab);
+  };
+
+  const applyFilters = (next: FilterValues) => {
+    setFilters(next);
+    setUploadDocNumber(next.docNumber || "");
+    setSelectedRows([]);
+  };
 
   const handleUpload = async () => {
     if (!activeDocNumber || selectedFiles.length === 0) return;
@@ -371,7 +378,7 @@ export function ProcurementStageModule({ config }: { config: StageModuleConfig }
         ].map((tab) => (
           <button
             key={tab.id}
-            onClick={() => setSubTab(tab.id as "upload" | "change" | "view")}
+            onClick={() => changeSubTab(tab.id as "upload" | "change" | "view")}
             className="px-4 py-2"
             style={{
               fontSize: "12px",
@@ -387,112 +394,35 @@ export function ProcurementStageModule({ config }: { config: StageModuleConfig }
         ))}
       </div>
 
-      <FilterBar docType={config.frontendStage} onSearch={(next) => { setFilters(next); if (next.docNumber) setUploadDocNumber(next.docNumber); }} valueHelpItems={valueHelpItems} plants={plants} vendors={vendors} />
+      <FilterBar docType={config.frontendStage} onSearch={applyFilters} valueHelpItems={valueHelpItems} plants={plants} values={filters} />
 
       <div className="flex-1 overflow-auto p-4 flex flex-col gap-4">
-        {(error || infoMessage) && (
-          <div className="border px-4 py-3" style={{ borderColor: error ? "#F0B2B2" : "#B7E0C1", backgroundColor: error ? "#FBEAEA" : "#EEF5EC", color: error ? "#BB0000" : "#107E3E", borderRadius: "2px", fontSize: "12px" }}>
-            {error || infoMessage}
-          </div>
-        )}
-
-        <div className="border" style={{ backgroundColor: "#ffffff", borderColor: "#d9d9d9", borderRadius: "2px" }}>
-          <div className="px-4 py-2 border-b flex items-center justify-between" style={{ backgroundColor: "#f5f5f5", borderColor: "#d9d9d9" }}>
-            <span style={{ fontSize: "12px", fontWeight: "600", color: "#32363a" }}>{config.description} ({tableRows.length})</span>
-            <span style={{ fontSize: "11px", color: "#8a8b8c" }}>{records.length} reference record(s)</span>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full" style={{ borderCollapse: "collapse" }}>
-              <thead>
-                <tr style={{ backgroundColor: "#f5f5f5", borderBottom: "1px solid #d9d9d9" }}>
-                  {headers.map((header) => (
-                    <th key={header} className="text-left" style={{ padding: "6px 10px", fontSize: "11px", fontWeight: "600", color: "#32363a", borderRight: "1px solid #e5e5e5", whiteSpace: "nowrap" }}>{header}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {tableRows.length === 0 ? (
-                  <tr><td colSpan={headers.length} style={{ padding: "20px", textAlign: "center", fontSize: "12px", color: "#8a8b8c" }}>No records match the current filters.</td></tr>
-                ) : tableRows.map((row, index) => (
-                  <tr key={row.key} style={{ borderBottom: "1px solid #eeeeee", backgroundColor: selectedRows.includes(row.key) ? "#EAF1FF" : index % 2 === 0 ? "#ffffff" : "#fafafa" }} onClick={() => setSelectedRows((current) => current.includes(row.key) ? current.filter((item) => item !== row.key) : [...current, row.key])}>
-                    {renderRow(row, config.frontendStage)}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        {subTab === "upload" && (
-          <div className="flex gap-4 flex-wrap">
-            <div className="flex-1 border" style={{ backgroundColor: "#ffffff", borderColor: "#d9d9d9", borderRadius: "2px", minWidth: "320px" }}>
-              <div className="px-4 py-2 border-b" style={{ backgroundColor: "#f5f5f5", borderColor: "#d9d9d9" }}>
-                <span style={{ fontSize: "12px", fontWeight: "600", color: "#32363a" }}>{config.uploadLabel}</span>
-              </div>
-              <div className="p-4 flex flex-col gap-3">
-                <div className="flex flex-col gap-1">
-                  <label style={{ fontSize: "11px", fontWeight: "500", color: "#32363a" }}>Reference Number</label>
-                  <select value={activeDocNumber} onChange={(event) => setUploadDocNumber(event.target.value)} className="border px-2 py-1 outline-none" style={{ fontSize: "12px", borderColor: "#d9d9d9", borderRadius: "2px", backgroundColor: "#ffffff", height: "30px", color: "#32363a" }}>
-                    <option value="">Select</option>
-                    {valueHelpItems.map((item) => <option key={item.id} value={item.id}>{item.id}</option>)}
-                  </select>
-                </div>
-                <button onClick={() => fileInputRef.current?.click()} className="border-2 border-dashed flex flex-col items-center justify-center cursor-pointer px-4 py-6" style={{ borderColor: "#B0B0B0", backgroundColor: "#FAFAFA", borderRadius: "2px" }}>
-                  <Upload size={20} color="#6A6D70" />
-                  <div style={{ fontSize: "12px", color: "#32363a", marginTop: "8px" }}>{selectedFiles.length > 0 ? selectedFiles.map((file) => file.name).join(", ") : `Choose ${config.multiUpload ? "one or more files" : "a file"}`}</div>
-                  <div style={{ fontSize: "11px", color: "#8a8b8c", marginTop: "4px" }}>Supported: PDF, PNG, JPG, JPEG, TIFF, BMP</div>
-                </button>
-                <input ref={fileInputRef} type="file" multiple={config.multiUpload} className="hidden" onChange={(event) => setSelectedFiles(Array.from(event.target.files || []))} />
-                <button onClick={() => void handleUpload()} disabled={!activeDocNumber || selectedFiles.length === 0 || uploading} className="px-4 py-2 border w-fit flex items-center gap-2" style={{ fontSize: "12px", backgroundColor: !activeDocNumber || selectedFiles.length === 0 || uploading ? "#d9d9d9" : "#0070F2", color: "#ffffff", borderColor: !activeDocNumber || selectedFiles.length === 0 || uploading ? "#d9d9d9" : "#0070F2", borderRadius: "2px" }}>
-                  {uploading ? <LoaderCircle size={14} className="animate-spin" /> : <FileUp size={14} />}
-                  Upload Document
-                </button>
-              </div>
-            </div>
-            <div className="border flex-1" style={{ backgroundColor: "#ffffff", borderColor: "#d9d9d9", borderRadius: "2px", minWidth: "280px" }}>
-              <div className="px-4 py-2 border-b" style={{ backgroundColor: "#f5f5f5", borderColor: "#d9d9d9" }}>
-                <span style={{ fontSize: "12px", fontWeight: "600", color: "#32363a" }}>OCR Validation</span>
-              </div>
-              <div className="p-4 flex flex-col gap-3" style={{ fontSize: "12px", color: "#32363a" }}>
-                {!lastValidation ? <span style={{ color: "#8a8b8c" }}>Upload or replace a document to see the latest OCR validation result.</span> : (
-                  <>
-                    <div className="flex items-center gap-2">{lastValidation.ocr_status === "VALID" ? <CheckCircle size={16} color="#107E3E" /> : <XCircle size={16} color="#E9730C" />}<span style={{ fontWeight: "600", color: statusTone(lastValidation.ocr_status).color }}>{lastValidation.ocr_status}</span></div>
-                    <div style={{ backgroundColor: "#f7f7f7", border: "1px solid #e5e5e5", padding: "10px", borderRadius: "2px" }}>{lastValidation.ocr_rejection_detail?.summary || "All OCR checks passed."}</div>
-                    {lastValidation.ocr_rejection_detail?.failure_reasons?.length ? <ul className="list-disc pl-5" style={{ color: "#6A6D70" }}>{lastValidation.ocr_rejection_detail.failure_reasons.map((reason) => <li key={reason.check}>{reason.check}: {reason.suggestion}</li>)}</ul> : null}
-                  </>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {(subTab === "change" || subTab === "view") && (
+        {!filters.docNumber ? (
+          <SelectionPlaceholder
+            title={`Select a ${config.frontendStage} number to view items`}
+            description={`The ${config.description.toLowerCase()} table stays hidden until you choose a reference number from the filter bar or the upload form.`}
+          />
+        ) : (
           <div className="border" style={{ backgroundColor: "#ffffff", borderColor: "#d9d9d9", borderRadius: "2px" }}>
-            <div className="px-4 py-2 border-b" style={{ backgroundColor: "#f5f5f5", borderColor: "#d9d9d9" }}><span style={{ fontSize: "12px", fontWeight: "600", color: "#32363a" }}>{subTab === "change" ? "Manage Documents" : "Uploaded Documents"} ({filteredDocuments.length})</span></div>
+            <div className="px-4 py-2 border-b flex items-center justify-between" style={{ backgroundColor: "#f5f5f5", borderColor: "#d9d9d9" }}>
+              <span style={{ fontSize: "12px", fontWeight: "600", color: "#32363a" }}>{config.description} ({tableRows.length})</span>
+              <span style={{ fontSize: "11px", color: "#8a8b8c" }}>{records.length} reference record(s)</span>
+            </div>
             <div className="overflow-x-auto">
               <table className="w-full" style={{ borderCollapse: "collapse" }}>
                 <thead>
                   <tr style={{ backgroundColor: "#f5f5f5", borderBottom: "1px solid #d9d9d9" }}>
-                    {["File Name", "Reference", "Version", "OCR Status", "Upload Date", "Uploaded By", "Size", "Actions"].map((header) => <th key={header} className="text-left" style={{ padding: "6px 12px", fontSize: "11px", fontWeight: "600", color: "#32363a", borderRight: "1px solid #e5e5e5" }}>{header}</th>)}
+                    {headers.map((header) => (
+                      <th key={header} className="text-left" style={{ padding: "6px 10px", fontSize: "11px", fontWeight: "600", color: "#32363a", borderRight: "1px solid #e5e5e5", whiteSpace: "nowrap" }}>{header}</th>
+                    ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredDocuments.length === 0 ? <tr><td colSpan={8} style={{ padding: "20px", textAlign: "center", fontSize: "12px", color: "#8a8b8c" }}>No documents found.</td></tr> : filteredDocuments.map((document, index) => (
-                    <tr key={document._id} style={{ borderBottom: "1px solid #eeeeee", backgroundColor: index % 2 === 0 ? "#ffffff" : "#fafafa" }}>
-                      <td style={{ padding: "6px 12px", fontSize: "12px", color: "#0070F2", borderRight: "1px solid #e5e5e5" }}>{document.original_filename}</td>
-                      <td style={{ padding: "6px 12px", fontSize: "12px", color: "#32363a", borderRight: "1px solid #e5e5e5" }}>{document.referenceNumber}</td>
-                      <td style={{ padding: "6px 12px", fontSize: "12px", color: "#32363a", borderRight: "1px solid #e5e5e5" }}>v{document.version}</td>
-                      <td style={{ padding: "6px 12px", borderRight: "1px solid #e5e5e5" }}><span style={{ fontSize: "11px", color: statusTone(document.ocr_status).color, backgroundColor: statusTone(document.ocr_status).bg, padding: "2px 6px", borderRadius: "2px", fontWeight: "600" }}>{document.ocr_status}</span></td>
-                      <td style={{ padding: "6px 12px", fontSize: "12px", color: "#32363a", borderRight: "1px solid #e5e5e5" }}>{formatDate(document.uploaded_at)}</td>
-                      <td style={{ padding: "6px 12px", fontSize: "12px", color: "#32363a", borderRight: "1px solid #e5e5e5" }}>{document.uploaded_by || "system"}</td>
-                      <td style={{ padding: "6px 12px", fontSize: "12px", color: "#32363a", borderRight: "1px solid #e5e5e5" }}>{formatFileSize(document.file_size)}</td>
-                      <td style={{ padding: "6px 12px" }}>
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <a href={getDocumentDownloadUrl(stage, document._id, true)} target="_blank" rel="noreferrer" className="flex items-center gap-1 px-2 py-1 border hover:bg-blue-50" style={{ fontSize: "11px", borderColor: "#0070F2", color: "#0070F2", borderRadius: "2px" }}><Eye size={11} />View</a>
-                          <a href={getDocumentDownloadUrl(stage, document._id)} className="flex items-center gap-1 px-2 py-1 border hover:bg-gray-50" style={{ fontSize: "11px", borderColor: "#d9d9d9", color: "#32363a", borderRadius: "2px" }}><Download size={11} />Download</a>
-                          {subTab === "change" ? <><button onClick={() => handleReplace(document.referenceNumber, document._id)} className="flex items-center gap-1 px-2 py-1 border hover:bg-blue-50" style={{ fontSize: "11px", borderColor: "#0070F2", color: "#0070F2", borderRadius: "2px" }}><Edit size={11} />Replace</button><button onClick={() => void handleDelete(document._id)} className="flex items-center gap-1 px-2 py-1 border hover:bg-red-50" style={{ fontSize: "11px", borderColor: "#BB0000", color: "#BB0000", borderRadius: "2px" }}><Trash2 size={11} />Delete</button></> : null}
-                        </div>
-                      </td>
+                  {tableRows.length === 0 ? (
+                    <tr><td colSpan={headers.length} style={{ padding: "20px", textAlign: "center", fontSize: "12px", color: "#8a8b8c" }}>No records match the selected number and plant.</td></tr>
+                  ) : tableRows.map((row, index) => (
+                    <tr key={row.key} style={{ borderBottom: "1px solid #eeeeee", backgroundColor: selectedRows.includes(row.key) ? "#EAF1FF" : index % 2 === 0 ? "#ffffff" : "#fafafa" }} onClick={() => setSelectedRows((current) => current.includes(row.key) ? current.filter((item) => item !== row.key) : [...current, row.key])}>
+                      {renderRow(row, config.frontendStage)}
                     </tr>
                   ))}
                 </tbody>
@@ -500,9 +430,98 @@ export function ProcurementStageModule({ config }: { config: StageModuleConfig }
             </div>
           </div>
         )}
+
+        <SubTabPanel transitioning={subTabTransitioning}>
+          {subTab === "upload" && (
+            <div className="flex gap-4 flex-wrap">
+              <div className="flex-1 border" style={{ backgroundColor: "#ffffff", borderColor: "#d9d9d9", borderRadius: "2px", minWidth: "320px" }}>
+                <div className="px-4 py-2 border-b" style={{ backgroundColor: "#f5f5f5", borderColor: "#d9d9d9" }}>
+                  <span style={{ fontSize: "12px", fontWeight: "600", color: "#32363a" }}>{config.uploadLabel}</span>
+                </div>
+                <div className="p-4 flex flex-col gap-3">
+                  <div className="flex flex-col gap-1">
+                    <label style={{ fontSize: "11px", fontWeight: "500", color: "#32363a" }}>Reference Number</label>
+                    <select
+                      value={activeDocNumber}
+                      onChange={(event) => {
+                        const nextDocNumber = event.target.value;
+                        setUploadDocNumber(nextDocNumber);
+                        setFilters((current) => ({ ...current, docNumber: nextDocNumber }));
+                        setSelectedRows([]);
+                      }}
+                      className="border px-2 py-1 outline-none"
+                      style={{ fontSize: "12px", borderColor: "#d9d9d9", borderRadius: "2px", backgroundColor: "#ffffff", height: "30px", color: "#32363a" }}
+                    >
+                      <option value="">Select</option>
+                      {valueHelpItems.map((item) => <option key={item.id} value={item.id}>{item.id}</option>)}
+                    </select>
+                  </div>
+                  <button onClick={() => fileInputRef.current?.click()} className="border-2 border-dashed flex flex-col items-center justify-center cursor-pointer px-4 py-6" style={{ borderColor: "#B0B0B0", backgroundColor: "#FAFAFA", borderRadius: "2px" }}>
+                    <Upload size={20} color="#6A6D70" />
+                    <div style={{ fontSize: "12px", color: "#32363a", marginTop: "8px" }}>{selectedFiles.length > 0 ? selectedFiles.map((file) => file.name).join(", ") : `Choose ${config.multiUpload ? "one or more files" : "a file"}`}</div>
+                    <div style={{ fontSize: "11px", color: "#8a8b8c", marginTop: "4px" }}>Supported: PDF, PNG, JPG, JPEG, TIFF, BMP</div>
+                  </button>
+                  <input ref={fileInputRef} type="file" multiple={config.multiUpload} className="hidden" onChange={(event) => setSelectedFiles(Array.from(event.target.files || []))} />
+                  <button onClick={() => void handleUpload()} disabled={!activeDocNumber || selectedFiles.length === 0 || uploading} className="px-4 py-2 border w-fit flex items-center gap-2" style={{ fontSize: "12px", backgroundColor: !activeDocNumber || selectedFiles.length === 0 || uploading ? "#d9d9d9" : "#0070F2", color: "#ffffff", borderColor: !activeDocNumber || selectedFiles.length === 0 || uploading ? "#d9d9d9" : "#0070F2", borderRadius: "2px" }}>
+                    {uploading ? <LoaderCircle size={14} className="animate-spin" /> : <FileUp size={14} />}
+                    Upload Document
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {(subTab === "change" || subTab === "view") && (
+            !hasSelectedReference ? (
+              <SelectionPlaceholder
+                title={`Select a ${config.frontendStage} number to ${subTab === "change" ? "manage" : "view"} documents`}
+                description="Document actions stay hidden until a single reference number is selected."
+              />
+            ) : (
+              <div className="border" style={{ backgroundColor: "#ffffff", borderColor: "#d9d9d9", borderRadius: "2px" }}>
+                <div className="px-4 py-2 border-b" style={{ backgroundColor: "#f5f5f5", borderColor: "#d9d9d9" }}><span style={{ fontSize: "12px", fontWeight: "600", color: "#32363a" }}>{subTab === "change" ? "Manage Documents" : "Uploaded Documents"} ({filteredDocuments.length})</span></div>
+                <div className="overflow-x-auto">
+                  <table className="w-full" style={{ borderCollapse: "collapse" }}>
+                    <thead>
+                      <tr style={{ backgroundColor: "#f5f5f5", borderBottom: "1px solid #d9d9d9" }}>
+                        {["File Name", "Reference", "Version", "OCR Status", "Upload Date", "Uploaded By", "Size", "Actions"].map((header) => <th key={header} className="text-left" style={{ padding: "6px 12px", fontSize: "11px", fontWeight: "600", color: "#32363a", borderRight: "1px solid #e5e5e5" }}>{header}</th>)}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredDocuments.length === 0 ? <tr><td colSpan={8} style={{ padding: "20px", textAlign: "center", fontSize: "12px", color: "#8a8b8c" }}>No documents found for the selected reference.</td></tr> : filteredDocuments.map((document, index) => (
+                        <tr key={document._id} style={{ borderBottom: "1px solid #eeeeee", backgroundColor: index % 2 === 0 ? "#ffffff" : "#fafafa" }}>
+                          <td style={{ padding: "6px 12px", fontSize: "12px", color: "#0070F2", borderRight: "1px solid #e5e5e5" }}>{document.original_filename}</td>
+                          <td style={{ padding: "6px 12px", fontSize: "12px", color: "#32363a", borderRight: "1px solid #e5e5e5" }}>{document.referenceNumber}</td>
+                          <td style={{ padding: "6px 12px", fontSize: "12px", color: "#32363a", borderRight: "1px solid #e5e5e5" }}>v{document.version}</td>
+                          <td style={{ padding: "6px 12px", borderRight: "1px solid #e5e5e5" }}><span style={{ fontSize: "11px", color: statusTone(document.ocr_status).color, backgroundColor: statusTone(document.ocr_status).bg, padding: "2px 6px", borderRadius: "2px", fontWeight: "600" }}>{document.ocr_status}</span></td>
+                          <td style={{ padding: "6px 12px", fontSize: "12px", color: "#32363a", borderRight: "1px solid #e5e5e5" }}>{formatDate(document.uploaded_at)}</td>
+                          <td style={{ padding: "6px 12px", fontSize: "12px", color: "#32363a", borderRight: "1px solid #e5e5e5" }}>{document.uploaded_by || "system"}</td>
+                          <td style={{ padding: "6px 12px", fontSize: "12px", color: "#32363a", borderRight: "1px solid #e5e5e5" }}>{formatFileSize(document.file_size)}</td>
+                          <td style={{ padding: "6px 12px" }}>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <a href={getDocumentDownloadUrl(stage, document._id, true)} target="_blank" rel="noreferrer" className="flex items-center gap-1 px-2 py-1 border hover:bg-blue-50" style={{ fontSize: "11px", borderColor: "#0070F2", color: "#0070F2", borderRadius: "2px" }}><Eye size={11} />View</a>
+                              <a href={getDocumentDownloadUrl(stage, document._id)} className="flex items-center gap-1 px-2 py-1 border hover:bg-gray-50" style={{ fontSize: "11px", borderColor: "#d9d9d9", color: "#32363a", borderRadius: "2px" }}><Download size={11} />Download</a>
+                              {subTab === "change" ? <><button onClick={() => handleReplace(document.referenceNumber, document._id)} className="flex items-center gap-1 px-2 py-1 border hover:bg-blue-50" style={{ fontSize: "11px", borderColor: "#0070F2", color: "#0070F2", borderRadius: "2px" }}><Edit size={11} />Replace</button><button onClick={() => void handleDelete(document._id)} className="flex items-center gap-1 px-2 py-1 border hover:bg-red-50" style={{ fontSize: "11px", borderColor: "#BB0000", color: "#BB0000", borderRadius: "2px" }}><Trash2 size={11} />Delete</button></> : null}
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )
+          )}
+        </SubTabPanel>
       </div>
 
       <input ref={replaceInputRef} type="file" className="hidden" onChange={(event) => void onReplaceFileSelected(event)} />
+      <ModuleFooterAlerts
+        error={error}
+        infoMessage={infoMessage}
+        validation={lastValidation}
+        idleMessage={`Select a ${config.frontendStage} number to load its items, manage documents, and see OCR feedback here in the footer.`}
+      />
     </div>
   );
 }

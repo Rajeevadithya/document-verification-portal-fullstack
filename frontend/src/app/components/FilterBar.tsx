@@ -8,15 +8,12 @@ type FilterBarProps = {
   onSearch: (filters: FilterValues) => void;
   valueHelpItems: ValueHelpItem[];
   plants?: string[];
-  vendors?: string[];
+  values?: Partial<FilterValues>;
 };
 
 export type FilterValues = {
   docNumber: string;
   plant: string;
-  vendor: string;
-  dateFrom: string;
-  dateTo: string;
 };
 
 const DOC_LABELS: Record<FrontendStageKey, string> = {
@@ -33,34 +30,26 @@ const VH_TITLES: Record<FrontendStageKey, string> = {
   INV: "Invoice",
 };
 
-export function FilterBar({ docType, onSearch, valueHelpItems, plants = [], vendors = [] }: FilterBarProps) {
+export function FilterBar({ docType, onSearch, valueHelpItems, plants = [], values }: FilterBarProps) {
   const [docNumber, setDocNumber] = useState("");
   const [plant, setPlant] = useState("");
-  const [vendor, setVendor] = useState("");
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
   const [vhOpen, setVhOpen] = useState(false);
 
   useEffect(() => {
-    if (vendors.length === 0 && vendor) {
-      setVendor("");
-    }
-  }, [vendor, vendors.length]);
+    setDocNumber(values?.docNumber ?? "");
+    setPlant(values?.plant ?? "");
+  }, [values?.docNumber, values?.plant]);
 
   const availablePlants = useMemo(() => plants.filter(Boolean), [plants]);
-  const availableVendors = useMemo(() => vendors.filter(Boolean), [vendors]);
 
   const handleSearch = () => {
-    onSearch({ docNumber, plant, vendor, dateFrom, dateTo });
+    onSearch({ docNumber, plant });
   };
 
   const handleClear = () => {
-    const cleared = { docNumber: "", plant: "", vendor: "", dateFrom: "", dateTo: "" };
+    const cleared = { docNumber: "", plant: "" };
     setDocNumber("");
     setPlant("");
-    setVendor("");
-    setDateFrom("");
-    setDateTo("");
     onSearch(cleared);
   };
 
@@ -98,24 +87,6 @@ export function FilterBar({ docType, onSearch, valueHelpItems, plants = [], vend
             </select>
           </div>
 
-          <div className="flex flex-col gap-1">
-            <label style={{ fontSize: "11px", color: "#32363a", fontWeight: "500" }}>Vendor</label>
-            <select value={vendor} onChange={(event) => setVendor(event.target.value)} className="border px-2 py-1 outline-none" style={{ fontSize: "12px", borderColor: "#d9d9d9", width: "150px", color: "#32363a", borderRadius: "2px", backgroundColor: "#ffffff", height: "26px" }} disabled={availableVendors.length === 0}>
-              <option value="">All Vendors</option>
-              {availableVendors.map((item) => <option key={item} value={item}>{item}</option>)}
-            </select>
-          </div>
-
-          <div className="flex flex-col gap-1">
-            <label style={{ fontSize: "11px", color: "#32363a", fontWeight: "500" }}>Date From</label>
-            <input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} className="border px-2 py-1 outline-none" style={{ fontSize: "12px", borderColor: "#d9d9d9", width: "130px", color: "#32363a", borderRadius: "2px", backgroundColor: "#ffffff", height: "26px" }} />
-          </div>
-
-          <div className="flex flex-col gap-1">
-            <label style={{ fontSize: "11px", color: "#32363a", fontWeight: "500" }}>Date To</label>
-            <input type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} className="border px-2 py-1 outline-none" style={{ fontSize: "12px", borderColor: "#d9d9d9", width: "130px", color: "#32363a", borderRadius: "2px", backgroundColor: "#ffffff", height: "26px" }} />
-          </div>
-
           <div className="flex items-end gap-2 pb-0">
             <button onClick={handleSearch} className="flex items-center gap-1 px-4 py-1 border hover:opacity-90" style={{ fontSize: "12px", backgroundColor: "#0070F2", color: "#ffffff", borderColor: "#0070F2", borderRadius: "2px", height: "26px", fontWeight: "500" }}>
               <Search size={12} /> Search
@@ -134,7 +105,7 @@ export function FilterBar({ docType, onSearch, valueHelpItems, plants = [], vend
           onSelect={(item) => {
             setDocNumber(item.id);
             setVhOpen(false);
-            onSearch({ docNumber: item.id, plant, vendor, dateFrom, dateTo });
+            onSearch({ docNumber: item.id, plant });
           }}
           onClose={() => setVhOpen(false)}
         />

@@ -11,6 +11,7 @@ GET  /api/pr/<pr_number>/documents/audit-logs    – full audit log for all PR d
 GET  /api/pr/documents/<doc_id>/audit-logs       – audit log for one specific document
 """
 import os
+from collections import OrderedDict
 from flask import Blueprint, request, send_file
 from app import mongo
 from datetime import datetime
@@ -28,49 +29,57 @@ pr_bp = Blueprint("purchase_requisition", __name__)
 @pr_bp.route("/ingest", methods=["POST"])
 def ingest_pr():
     data = request.json
-
     if not data:
         return error_response("No data received", 400)
 
-    # If API sends multiple PRs
+    def build_pr_doc(pr):
+        """
+        Header Data  : pr_number, document_type
+        Item Data    : item_number, material, unit_of_measure, quantity,
+                       valuation_price, delivery_date, plant,
+                       storage_location, purchase_group
+        """
+        items = []
+        for item in pr.get("items", []):
+            items.append({
+                "item_number":      item.get("item_number"),
+                "material":         item.get("material"),
+                "unit_of_measure":  item.get("unit_of_measure"),
+                "quantity":         item.get("quantity"),
+                "valuation_price":  item.get("valuation_price"),
+                "delivery_date":    item.get("delivery_date"),
+                "plant":            item.get("plant"),
+                "storage_location": item.get("storage_location"),
+                "purchase_group":   item.get("purchase_group"),
+            })
+
+        return {
+            # ── Header ──────────────────────────────────────────────────────
+            "pr_number":     pr.get("pr_number"),
+            "document_type": pr.get("document_type", "NB"),
+            "status":        pr.get("status", "Open"),
+            # ── Item Data ───────────────────────────────────────────────────
+            "items":      items,
+            "created_at": datetime.utcnow(),
+        }
+
+    # ── Multiple PRs ──────────────────────────────────────────────────────────
     if isinstance(data, list):
         inserted = []
-
         for pr in data:
-            pr_doc = {
-                "pr_number": pr.get("pr_number"),
-                "document_type": pr.get("document_type", "NB"),
-                "plant": pr.get("plant"),
-                "vendor": pr.get("vendor"),
-                "status": pr.get("status", "Open"),
-                "items": pr.get("items", []),
-                "created_at": datetime.utcnow()
-            }
-
+            pr_doc = build_pr_doc(pr)
             if not pr_doc["pr_number"]:
                 continue
-
             mongo.db.purchase_requisitions.update_one(
                 {"pr_number": pr_doc["pr_number"]},
                 {"$set": pr_doc},
-                upsert=True   # 🔥 important
+                upsert=True
             )
-
             inserted.append(pr_doc["pr_number"])
-
         return success_response(inserted, "PRs ingested")
 
-    # Single PR
-    pr_doc = {
-        "pr_number": data.get("pr_number"),
-        "document_type": data.get("document_type", "NB"),
-        "plant": data.get("plant"),
-        "vendor": data.get("vendor"),
-        "status": data.get("status", "Open"),
-        "items": data.get("items", []),
-        "created_at": datetime.utcnow()
-    }
-
+    # ── Single PR ─────────────────────────────────────────────────────────────
+    pr_doc = build_pr_doc(data)
     if not pr_doc["pr_number"]:
         return error_response("pr_number required", 400)
 
@@ -79,22 +88,67 @@ def ingest_pr():
         {"$set": pr_doc},
         upsert=True
     )
-
     return success_response(pr_doc, "PR ingested")
 
 
-# ── list all PRs ──────────────────────────────────────────────────────────────
+# ── List all PRs ──────────────────────────────────────────────────────────────
 @pr_bp.route("/", methods=["GET"])
 def list_prs():
     cursor = mongo.db.purchase_requisitions.find(
-        {}, {"pr_number": 1, "document_type": 1, "status": 1,
-             "created_at": 1, "_id": 1}
+        {},
+        {
+            "pr_number":     1,
+            "document_type": 1,
+            "status":        1,
+            "created_at":    1,
+            "items":         1,
+            "_id":           1,
+        }
     ).sort("pr_number", 1)
-    data = serialize_doc(list(cursor))
+
+    # Header: pr_number, document_type
+    # Items : item_number, material, unit_of_measure, quantity,
+    #         valuation_price, delivery_date, plant, storage_location, purchase_group
+    KEY_ORDER = [
+        "_id", "pr_number", "document_type",
+        "status", "created_at", "items",
+    ]
+
+    ITEM_ORDER = [
+        "item_number", "material", "unit_of_measure", "quantity",
+        "valuation_price", "delivery_date", "plant",
+        "storage_location", "purchase_group",
+    ]
+
+    def reorder_item(item):
+        ordered = OrderedDict()
+        for k in ITEM_ORDER:
+            if k in item:
+                ordered[k] = item[k]
+        for k, v in item.items():
+            if k not in ordered:
+                ordered[k] = v
+        return ordered
+
+    def reorder(doc):
+        # Re-order fields inside each item
+        doc["items"] = [reorder_item(item) for item in doc.get("items", [])]
+
+        ordered = OrderedDict()
+        for k in KEY_ORDER:
+            if k in doc:
+                ordered[k] = doc[k]
+        for k, v in doc.items():
+            if k not in ordered:
+                ordered[k] = v
+        return ordered
+
+    raw = serialize_doc(list(cursor))
+    data = [reorder(pr) for pr in raw]
     return success_response(data, "Purchase Requisitions fetched")
 
 
-# ── get PR details ────────────────────────────────────────────────────────────
+# ── Get PR details ────────────────────────────────────────────────────────────
 @pr_bp.route("/<pr_number>", methods=["GET"])
 def get_pr(pr_number):
     pr = mongo.db.purchase_requisitions.find_one({"pr_number": pr_number})
@@ -108,28 +162,13 @@ def get_pr(pr_number):
     return success_response(data, "PR details fetched")
 
 
-# ── upload multiple documents ─────────────────────────────────────────────────
+# ── Upload multiple documents ─────────────────────────────────────────────────
 @pr_bp.route("/<pr_number>/documents/upload", methods=["POST"])
 def upload_pr_document(pr_number):
-    """
-    Accepts one or more files under the key 'files' (multipart/form-data).
-    Also accepts a single file under 'file' for backward compatibility.
-    Optionally pass 'uploaded_by' as a form field to record who is uploading.
-
-    Duplicate files (identical content already uploaded for this PR) are
-    REJECTED with a clear explanation — both within the same batch and
-    against previously stored documents.
-
-    Example (multi-file):
-        curl -X POST .../api/pr/PR-1001/documents/upload \
-             -F "files=@doc1.pdf" -F "files=@doc2.pdf" \
-             -F "uploaded_by=john.doe"
-    """
     pr = mongo.db.purchase_requisitions.find_one({"pr_number": pr_number})
     if not pr:
         return error_response(f"PR '{pr_number}' not found", 404)
 
-    # Collect files
     files = request.files.getlist("files")
     if not files:
         single = request.files.get("file")
@@ -146,7 +185,6 @@ def upload_pr_document(pr_number):
 
     uploaded = []
     errors = []
-    # Track hashes seen within THIS batch to catch same-request duplicates
     seen_hashes_this_batch = {}
 
     for f in files:
@@ -156,23 +194,22 @@ def upload_pr_document(pr_number):
         if not allowed_file(f.filename):
             errors.append({
                 "filename": f.filename,
-                "reason": "INVALID_TYPE",
-                "error": "File type not allowed. Accepted: pdf, png, jpg, jpeg, tiff, bmp"
+                "reason":   "INVALID_TYPE",
+                "error":    "File type not allowed. Accepted: pdf, png, jpg, jpeg, tiff, bmp",
             })
             continue
 
-        # Check for duplicate within the same batch before hitting the DB
         from app.services.document_service import _compute_hash
         batch_hash = _compute_hash(f)
         if batch_hash in seen_hashes_this_batch:
             errors.append({
                 "filename": f.filename,
-                "reason": "DUPLICATE_IN_BATCH",
+                "reason":   "DUPLICATE_IN_BATCH",
                 "error": (
-                    f"This file has identical content to '{seen_hashes_this_batch[batch_hash]}' "
-                    f"which was already included in this upload batch. "
-                    f"Duplicate files in the same request are not allowed."
-                )
+                    f"This file has identical content to "
+                    f"'{seen_hashes_this_batch[batch_hash]}' "
+                    f"which was already included in this upload batch."
+                ),
             })
             continue
 
@@ -190,23 +227,13 @@ def upload_pr_document(pr_number):
                 "ocr_rejection_detail": doc.get("ocr_rejection_detail"),
                 "version":              doc["version"],
                 "uploaded_by":          doc["uploaded_by"],
-                "uploaded_at":          doc["uploaded_at"]
+                "uploaded_at":          doc["uploaded_at"],
             })
         except ValueError as dup_exc:
-            # Duplicate detected against existing DB records
-            errors.append({
-                "filename": f.filename,
-                "reason": "DUPLICATE_FILE",
-                "error": str(dup_exc)
-            })
+            errors.append({"filename": f.filename, "reason": "DUPLICATE_FILE", "error": str(dup_exc)})
         except Exception as exc:
-            errors.append({
-                "filename": f.filename,
-                "reason": "UPLOAD_ERROR",
-                "error": str(exc)
-            })
+            errors.append({"filename": f.filename, "reason": "UPLOAD_ERROR", "error": str(exc)})
 
-    # Clear "missing document" notifications if at least one file was accepted
     if uploaded:
         mongo.db.notifications.update_many(
             {"type": "MISSING_DOCUMENT", "stage": "PR", "reference_number": pr_number},
@@ -218,7 +245,7 @@ def upload_pr_document(pr_number):
         "uploaded":       uploaded,
         "uploaded_count": len(uploaded),
         "errors":         errors,
-        "error_count":    len(errors)
+        "error_count":    len(errors),
     }
 
     if not uploaded:
@@ -228,11 +255,11 @@ def upload_pr_document(pr_number):
         response_data,
         f"{len(uploaded)} document(s) uploaded successfully"
         + (f"; {len(errors)} rejected" if errors else ""),
-        201
+        201,
     )
 
 
-# ── change (replace) a specific document ─────────────────────────────────────
+# ── Change (replace) a specific document ─────────────────────────────────────
 @pr_bp.route("/<pr_number>/documents/<doc_id>/change", methods=["PUT"])
 def change_pr_document(pr_number, doc_id):
     pr = mongo.db.purchase_requisitions.find_one({"pr_number": pr_number})
@@ -259,7 +286,7 @@ def change_pr_document(pr_number, doc_id):
     return success_response(updated_doc, "Document replaced successfully")
 
 
-# ── view all active documents ─────────────────────────────────────────────────
+# ── View all active documents ─────────────────────────────────────────────────
 @pr_bp.route("/<pr_number>/documents", methods=["GET"])
 def view_pr_documents(pr_number):
     pr = mongo.db.purchase_requisitions.find_one({"pr_number": pr_number})
@@ -269,10 +296,11 @@ def view_pr_documents(pr_number):
     docs = get_active_documents("PR", pr_number)
     return success_response(
         {"pr_number": pr_number, "documents": docs, "count": len(docs)},
-        "Documents fetched"
+        "Documents fetched",
     )
 
 
+# ── Delete a document ─────────────────────────────────────────────────────────
 @pr_bp.route("/documents/<doc_id>", methods=["DELETE"])
 def delete_pr_document(doc_id):
     doc = get_document_by_id(doc_id)
@@ -284,7 +312,9 @@ def delete_pr_document(doc_id):
         return error_response("Document not found", 404)
 
     return success_response(deleted, "Document deleted successfully")
-# ── download document ─────────────────────────────────────────────────────────
+
+
+# ── Download document ─────────────────────────────────────────────────────────
 @pr_bp.route("/documents/<doc_id>/download", methods=["GET"])
 def download_pr_document(doc_id):
     doc = get_document_by_id(doc_id)
@@ -297,11 +327,11 @@ def download_pr_document(doc_id):
         doc["file_path"],
         mimetype=doc.get("mime_type", "application/octet-stream"),
         as_attachment=not inline,
-        download_name=doc["original_filename"]
+        download_name=doc["original_filename"],
     )
 
 
-# ── audit logs for all documents under a PR ───────────────────────────────────
+# ── Audit logs for all documents under a PR ───────────────────────────────────
 @pr_bp.route("/<pr_number>/documents/audit-logs", methods=["GET"])
 def pr_document_audit_logs(pr_number):
     pr = mongo.db.purchase_requisitions.find_one({"pr_number": pr_number})
@@ -311,11 +341,11 @@ def pr_document_audit_logs(pr_number):
     logs = get_document_audit_logs(stage="PR", reference_number=pr_number)
     return success_response(
         {"pr_number": pr_number, "audit_logs": logs, "count": len(logs)},
-        "Audit logs fetched"
+        "Audit logs fetched",
     )
 
 
-# ── audit log for one specific document ──────────────────────────────────────
+# ── Audit log for one specific document ──────────────────────────────────────
 @pr_bp.route("/documents/<doc_id>/audit-logs", methods=["GET"])
 def document_audit_log(doc_id):
     doc = get_document_by_id(doc_id)
@@ -325,5 +355,5 @@ def document_audit_log(doc_id):
     logs = get_document_audit_logs(document_id=doc_id)
     return success_response(
         {"document_id": doc_id, "audit_logs": logs, "count": len(logs)},
-        "Document audit logs fetched"
+        "Document audit logs fetched",
     )

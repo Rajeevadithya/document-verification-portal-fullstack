@@ -23,6 +23,83 @@ def serialize_doc(doc: dict) -> dict:
         return doc.isoformat()
     return doc
 
+def format_pr_sections(pr_doc: dict | None) -> dict | None:
+    if pr_doc is None:
+        return None
+
+    data = serialize_doc(pr_doc)
+    data["header_data"] = {
+        "pr_number": data.get("pr_number"),
+        "document_type": data.get("document_type"),
+    }
+    data["item_data"] = [
+        {
+            "item_number": item.get("item_number"),
+            "material": item.get("material"),
+            "unit_of_measure": item.get("unit_of_measure"),
+            "quantity": item.get("quantity"),
+            "valuation_price": item.get("valuation_price"),
+            "delivery_date": item.get("delivery_date"),
+            "plant": item.get("plant"),
+            "storage_location": item.get("storage_location"),
+            "purchase_group": item.get("purchase_group"),
+        }
+        for item in data.get("items", [])
+    ]
+    return data
+
+def format_po_sections(po_doc: dict | None) -> dict | None:
+    if po_doc is None:
+        return None
+
+    data = serialize_doc(po_doc)
+    data["header_data"] = {
+        "document_type": data.get("document_type"),
+        "purchase_organization": data.get("purchase_organization"),
+        "purchase_requisition_number": data.get("pr_number"),
+        "purchase_group": data.get("purchase_group"),
+        "company_code": data.get("company_code"),
+    }
+    data["item_data"] = [
+        {
+            "vendor": data.get("vendor"),
+            "item_number": item.get("item_number"),
+            "material": item.get("material"),
+            "quantity": item.get("quantity"),
+            "net_price": item.get("net_price"),
+            "delivery_date": item.get("delivery_date"),
+            "plant": item.get("plant"),
+            "storage_location": item.get("storage_location"),
+        }
+        for item in data.get("items", [])
+    ]
+    return data
+
+def format_grn_sections(grn_doc: dict | None, purchase_requisition_number: str | None = None) -> dict | None:
+    if grn_doc is None:
+        return None
+
+    data = serialize_doc(grn_doc)
+    data["header_data"] = {
+        "goods_receipt_number": data.get("grn_number"),
+        "purchase_requisition_number": purchase_requisition_number,
+    }
+    data["item_data"] = [
+        {
+            "document_date": data.get("document_date"),
+            "posting_date": data.get("posting_date"),
+            "item": item.get("item"),
+            "material": item.get("material"),
+            "unit_of_measure": item.get("unit_of_measure"),
+            "quantity": item.get("quantity"),
+            "plant": item.get("plant"),
+            "storage_location": item.get("storage_location"),
+            "price": item.get("price"),
+        }
+        for item in data.get("items", [])
+    ]
+    return data
+
 def success_response(data=None, message="Success", status_code=200):
     resp = {"success": True, "message": message}
     if data is not None:

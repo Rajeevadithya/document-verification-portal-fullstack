@@ -3,7 +3,6 @@ import { AlertTriangle, CheckCircle2, ChevronDown, ChevronUp, FileText, Shopping
 import { getDashboardStages, getDashboardSummary, getRecentActivity } from "../lib/api";
 import { formatDateTime, statusTone } from "../lib/format";
 import type { DashboardSummary, RecentActivityItem, StageKey, StageStatusRecord } from "../lib/types";
-import { ProcurementChatbot } from "./ProcurementChatbot";
 
 type SortKey = "type" | "total" | "uploaded" | "missing" | "ocrReview";
 
@@ -95,27 +94,6 @@ export function Dashboard() {
     else { setSortKey(key); setSortAsc(true); }
   };
 
-  /**
-   * Called by ProcurementChatbot when the user clicks a "Navigate" action.
-   * Maps chatbot screen names → your app routes.
-   */
-  const handleNavigate = (screen: string, id?: string) => {
-    const routes: Record<string, string> = {
-      PR_LIST: "/documents?tab=PR",
-      PO_LIST: "/documents?tab=PO",
-      GRN_LIST: "/documents?tab=GRN",
-      INVOICE_LIST: "/documents?tab=INV",
-      DASHBOARD: "/",
-      NOTIFICATIONS: "/documents?tab=INV",
-    };
-
-    if (screen === "PR_DETAIL" && id) window.location.href = `/documents?tab=PR&doc=${id}&action=upload`;
-    else if (screen === "PO_DETAIL" && id) window.location.href = `/documents?tab=PO&doc=${id}&action=upload`;
-    else if (screen === "GRN_DETAIL" && id) window.location.href = `/documents?tab=GRN&doc=${id}&action=upload`;
-    else if (screen === "INVOICE_DETAIL" && id) window.location.href = `/documents?tab=INV&doc=${id}&action=upload`;
-    else if (routes[screen]) window.location.href = routes[screen];
-  };
-
   const SortIcon = ({ column }: { column: SortKey }) =>
     sortKey === column ? (
       sortAsc ? <ChevronUp size={11} className="inline ml-1" /> : <ChevronDown size={11} className="inline ml-1" />
@@ -142,7 +120,6 @@ export function Dashboard() {
           <div style={{ fontSize: "11px", color: "#8a8b8c" }}>Home</div>
           <h1 style={{ fontSize: "16px", fontWeight: "600", color: "#32363a", margin: 0 }}>Dashboard</h1>
         </div>
-        <div style={{ fontSize: "11px", color: "#8a8b8c" }}>Live backend summary</div>
       </div>
 
       <div className="flex-1 overflow-auto p-4 flex flex-col gap-4">
@@ -255,8 +232,6 @@ export function Dashboard() {
         </div>
       </div>
 
-      {/* ── Chatbot (floating button + window, powered by Gemini 2.0 Flash) ── */}
-      <ProcurementChatbot onNavigate={handleNavigate} apiBase="" />
     </div>
   );
 }

@@ -5,6 +5,7 @@ import logo from "../../assets/logo.png";
 import { getNotifications, getUnreadNotificationCount, markAllNotificationsRead, markNotificationRead } from "../lib/api";
 import { formatDateTime, statusTone } from "../lib/format";
 import type { NotificationItem } from "../lib/types";
+import { ProcurementChatbot } from "./ProcurementChatbot";
 
 const NAV_ITEMS = [
   { label: "Dashboard", path: "/", icon: LayoutDashboard },
@@ -68,6 +69,23 @@ export function Layout() {
   const markAllRead = async () => {
     await markAllNotificationsRead();
     await loadNotifications();
+  };
+
+  const handleChatNavigate = (screen: string, id?: string) => {
+    const routes: Record<string, string> = {
+      PR_LIST: "/documents?tab=PR",
+      PO_LIST: "/documents?tab=PO",
+      GRN_LIST: "/documents?tab=GRN",
+      INVOICE_LIST: "/documents?tab=INV",
+      DASHBOARD: "/",
+      NOTIFICATIONS: "/documents?tab=INV",
+    };
+
+    if (screen === "PR_DETAIL" && id) navigate(`/documents?tab=PR&doc=${id}&action=upload`);
+    else if (screen === "PO_DETAIL" && id) navigate(`/documents?tab=PO&doc=${id}&action=upload`);
+    else if (screen === "GRN_DETAIL" && id) navigate(`/documents?tab=GRN&doc=${id}&action=upload`);
+    else if (screen === "INVOICE_DETAIL" && id) navigate(`/documents?tab=INV&doc=${id}&action=upload`);
+    else if (routes[screen]) navigate(routes[screen]);
   };
 
   return (
@@ -157,6 +175,8 @@ export function Layout() {
 
         <main className="flex-1 overflow-hidden bg-[#f7f7f7]"><Outlet /></main>
       </div>
+
+      <ProcurementChatbot onNavigate={handleChatNavigate} apiBase="" />
     </div>
   );
 }

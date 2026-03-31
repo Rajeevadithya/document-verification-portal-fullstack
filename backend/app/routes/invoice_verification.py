@@ -15,7 +15,7 @@ from datetime import datetime
 from flask import Blueprint, request, send_file
 from app import mongo
 from app.utils.helpers import (
-    serialize_doc, success_response, error_response, allowed_file
+    format_grn_sections, format_po_sections, format_pr_sections, serialize_doc, success_response, error_response, allowed_file
 )
 from app.services.document_service import (
     save_document, change_document, delete_document, get_active_documents, get_document_by_id
@@ -47,9 +47,16 @@ def get_invoice_aggregated(invoice_number):
     po_number  = inv.get("po_number")
     grn_number = inv.get("grn_number")
 
-    pr_data  = serialize_doc(mongo.db.purchase_requisitions.find_one({"pr_number": pr_number}))  if pr_number  else None
-    po_data  = serialize_doc(mongo.db.purchase_orders.find_one({"po_number": po_number}))        if po_number  else None
-    grn_data = serialize_doc(mongo.db.goods_receipts.find_one({"grn_number": grn_number}))       if grn_number else None
+    pr_doc = mongo.db.purchase_requisitions.find_one({"pr_number": pr_number}) if pr_number else None
+    po_doc = mongo.db.purchase_orders.find_one({"po_number": po_number}) if po_number else None
+    grn_doc = mongo.db.goods_receipts.find_one({"grn_number": grn_number}) if grn_number else None
+
+    pr_data = format_pr_sections(pr_doc) if pr_doc else None
+    po_data = format_po_sections(po_doc) if po_doc else None
+    grn_data = format_grn_sections(
+        grn_doc,
+        purchase_requisition_number=po_doc.get("pr_number") if po_doc else None,
+    ) if grn_doc else None
 
     # Docs
     inv_docs = get_active_documents("INVOICE", invoice_number)
