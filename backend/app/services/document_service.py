@@ -8,9 +8,18 @@ import hashlib
 from datetime import datetime
 from bson import ObjectId
 from flask import request as flask_request
-from app import mongo
-from app.utils.helpers import safe_filename, get_upload_path
-from app.services.ocr_service import validate_document, build_rejection_explanation
+from backend.app import mongo
+from backend.app.utils.helpers import safe_filename, get_upload_path
+from backend.app.services.ocr_service import validate_document, build_rejection_explanation
+
+
+class OCRValidationError(ValueError):
+    """Raised when OCR validation blocks a document upload or replacement."""
+
+    def __init__(self, message: str, *, ocr_result: dict | None = None, ocr_rejection_detail: dict | None = None):
+        super().__init__(message)
+        self.ocr_result = ocr_result
+        self.ocr_rejection_detail = ocr_rejection_detail
 
 
 # ── duplicate detection ───────────────────────────────────────────────────────
@@ -38,6 +47,49 @@ def is_duplicate(file_hash: str, stage: str, reference_number: str) -> dict | No
         "is_active": True
     })
     return _serialize_one(existing) if existing else None
+
+
+def _build_ocr_failure_message(stage: str, reference_number: str, rejection_detail: dict | None, ocr_result: dict) -> str:
+    stage_upper = stage.upper()
+    reasons = rejection_detail.get("failure_reasons", []) if rejection_detail else []
+    simple_reasons: list[str] = []
+
+    for reason in reasons:
+        check = (reason.get("check") or "").lower()
+        found = reason.get("found") or ""
+
+        if "reference number presence" in check:
+            if stage_upper == "PR":
+                simple_reasons.append("PR number doesn't match the uploaded document.")
+            elif stage_upper == "PO":
+                simple_reasons.append("PO number doesn't match the uploaded document.")
+            elif stage_upper == "GRN":
+                simple_reasons.append("GRN number doesn't match the uploaded document.")
+            else:
+                simple_reasons.append("Document number doesn't match the uploaded document.")
+        elif "cross-reference validation" in check:
+            simple_reasons.append("Linked PR number is missing from the PO document.")
+        elif "document type detection" in check:
+            if found and found != "Undetected":
+                simple_reasons.append(f"Uploaded file looks like a {found} document, not a {stage_upper} document.")
+            else:
+                simple_reasons.append("OCR could not clearly identify the document type.")
+
+    if not simple_reasons and ocr_result.get("issues"):
+        for issue in ocr_result["issues"][:2]:
+            issue_text = str(issue).strip()
+            if issue_text:
+                simple_reasons.append(issue_text)
+
+    if not simple_reasons:
+        simple_reasons.append(f"{stage_upper} document validation failed.")
+
+    deduped_reasons = list(dict.fromkeys(simple_reasons))
+    return f"Upload blocked. {' '.join(deduped_reasons[:3])}"
+
+
+def _should_block_for_ocr(stage: str, ocr_result: dict) -> bool:
+    return stage.upper() in {"PR", "PO", "GRN"} and ocr_result.get("ocr_status") != "VALID"
 
 
 # ── public API ────────────────────────────────────────────────────────────────
@@ -82,6 +134,17 @@ def save_document(file_obj, stage: str, reference_number: str,
     ocr_rejection_detail = None
     if ocr_result["ocr_status"] in ("INVALID", "REVIEW"):
         ocr_rejection_detail = build_rejection_explanation(ocr_result, stage, reference_number)
+
+    if _should_block_for_ocr(stage, ocr_result):
+        try:
+            if os.path.exists(full_path):
+                os.remove(full_path)
+        finally:
+            raise OCRValidationError(
+                _build_ocr_failure_message(stage, reference_number, ocr_rejection_detail, ocr_result),
+                ocr_result=ocr_result,
+                ocr_rejection_detail=ocr_rejection_detail,
+            )
 
     # Resolve uploader identity (explicit arg > form field > header > fallback)
     uploader = uploaded_by or _resolve_uploader()
@@ -160,30 +223,6 @@ def change_document(document_id: str, file_obj, stage: str,
             f"No changes were made."
         )
 
-    old_version = existing.get("version", 1)
-    uploader = uploaded_by or _resolve_uploader()
-    now = datetime.utcnow()
-
-    # Archive old record
-    mongo.db.documents.update_one(
-        {"_id": ObjectId(document_id)},
-        {"$set": {"is_active": False, "updated_at": now}}
-    )
-
-    # Audit log for archival
-    _write_audit_log(
-        action="DOCUMENT_ARCHIVED",
-        document_id=document_id,
-        stage=stage,
-        reference_number=reference_number,
-        performed_by=uploader,
-        details={
-            "archived_version": old_version,
-            "reason": "Replaced by new document upload"
-        }
-    )
-
-    # Save new file
     original_filename = file_obj.filename
     stored_name = safe_filename(stage, reference_number, original_filename)
     upload_path = get_upload_path(stage)
@@ -197,6 +236,39 @@ def change_document(document_id: str, file_obj, stage: str,
     ocr_rejection_detail = None
     if ocr_result["ocr_status"] in ("INVALID", "REVIEW"):
         ocr_rejection_detail = build_rejection_explanation(ocr_result, stage, reference_number)
+
+    if _should_block_for_ocr(stage, ocr_result):
+        try:
+            if os.path.exists(full_path):
+                os.remove(full_path)
+        finally:
+            raise OCRValidationError(
+                _build_ocr_failure_message(stage, reference_number, ocr_rejection_detail, ocr_result),
+                ocr_result=ocr_result,
+                ocr_rejection_detail=ocr_rejection_detail,
+            )
+
+    old_version = existing.get("version", 1)
+    uploader = uploaded_by or _resolve_uploader()
+    now = datetime.utcnow()
+
+    # Archive old record only after the replacement passes OCR validation.
+    mongo.db.documents.update_one(
+        {"_id": ObjectId(document_id)},
+        {"$set": {"is_active": False, "updated_at": now}}
+    )
+
+    _write_audit_log(
+        action="DOCUMENT_ARCHIVED",
+        document_id=document_id,
+        stage=stage,
+        reference_number=reference_number,
+        performed_by=uploader,
+        details={
+            "archived_version": old_version,
+            "reason": "Replaced by new document upload"
+        }
+    )
 
     new_version = old_version + 1
     doc = {

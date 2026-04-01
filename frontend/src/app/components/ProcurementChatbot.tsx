@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useNavigate } from "react-router";
 import {
   CheckCircle2,
   ChevronDown,
@@ -10,20 +11,20 @@ import {
   X,
   XCircle,
 } from "lucide-react";
- 
+
 // ── Types ──────────────────────────────────────────────────────────────────────
 type NavigateAction = {
   type: "NAVIGATE" | "NONE";
   screen: string;
   id?: string;
 };
- 
+
 type BotResponse = {
   message: string;
   action: NavigateAction;
   data: Record<string, unknown>[];
 };
- 
+
 type Message = {
   id: string;
   from: "user" | "bot" | "error";
@@ -31,12 +32,11 @@ type Message = {
   response?: BotResponse;
   timestamp: Date;
 };
- 
+
 type Props = {
-  onNavigate?: (screen: string, id?: string) => void;
   apiBase?: string;
 };
- 
+
 // ── Suggestion chips ───────────────────────────────────────────────────────────
 const SUGGESTIONS = [
   "Show dashboard summary",
@@ -46,21 +46,59 @@ const SUGGESTIONS = [
   "Show unread notifications",
   "Show PO-2001",
 ];
- 
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const uid = () => Math.random().toString(36).slice(2);
- 
+
 function formatTime(d: Date) {
   return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
- 
+
 function ocrColor(status: string): { color: string; bg: string } {
   if (status === "VALID") return { color: "#107E3E", bg: "#EEF5EC" };
   if (status === "INVALID") return { color: "#BB0000", bg: "#FBEAEA" };
   if (status === "REVIEW") return { color: "#E9730C", bg: "#FEF3E8" };
   return { color: "#6A6D70", bg: "#f5f5f5" };
 }
- 
+
+// ── Route resolver ─────────────────────────────────────────────────────────────
+// Maps chatbot action { screen, id } → React Router path
+function resolveRoute(screen: string, id?: string): string | null {
+  if (!screen || screen === "NONE") return null;
+
+  // Detail pages — id is the document number e.g. "9000000000", "PR-1001", "GRN-5"
+  if (screen === "PR_DETAIL" && id) {
+    // Strip any "PR-" prefix so the URL matches the route param format
+    const ref = id.replace(/^PR-?/i, "");
+    return `/documents/pr/${encodeURIComponent(ref)}`;
+  }
+  if (screen === "PO_DETAIL" && id) {
+    const ref = id.replace(/^PO-?/i, "");
+    return `/documents/po/${encodeURIComponent(ref)}`;
+  }
+  if (screen === "GRN_DETAIL" && id) {
+    const ref = id.replace(/^GRN-?/i, "");
+    return `/documents/grn/${encodeURIComponent(ref)}`;
+  }
+  if (screen === "INVOICE_DETAIL") {
+    // Invoice detail lives on the documents page with a ?tab=INV&doc= param
+    const ref = id ? id.replace(/^INV-?/i, "") : "";
+    return ref ? `/documents?tab=INV&doc=${encodeURIComponent(ref)}` : `/documents?tab=INV`;
+  }
+
+  // List pages — navigate to the documents page with the correct tab selected
+  if (screen === "PR_LIST") return "/documents?tab=PR";
+  if (screen === "PO_LIST") return "/documents?tab=PO";
+  if (screen === "GRN_LIST") return "/documents?tab=GRN";
+  if (screen === "INVOICE_LIST") return "/documents?tab=INV";
+
+  // Other screens
+  if (screen === "DASHBOARD") return "/";
+  if (screen === "NOTIFICATIONS") return "/";
+
+  return null;
+}
+
 // ── Data card renderer ─────────────────────────────────────────────────────────
 function DataCard({ item }: { item: Record<string, unknown> }) {
   const stage = String(item.stage ?? item.type ?? "");
@@ -77,7 +115,7 @@ function DataCard({ item }: { item: Record<string, unknown> }) {
   const status = String(item.status ?? item.ocr_status ?? "");
   const name = String(item.original_filename ?? item.message ?? "");
   const { color, bg } = ocrColor(status);
- 
+
   return (
     <div
       style={{
@@ -129,21 +167,22 @@ function DataCard({ item }: { item: Record<string, unknown> }) {
     </div>
   );
 }
- 
+
 // ── Message bubble ─────────────────────────────────────────────────────────────
 function MessageBubble({
   msg,
-  onNavigate,
+  onNavigateTo,
 }: {
   msg: Message;
-  onNavigate?: (screen: string, id?: string) => void;
+  onNavigateTo: (screen: string, id?: string) => void;
 }) {
   const isUser = msg.from === "user";
   const isError = msg.from === "error";
   const resp = msg.response;
   const hasData = resp && resp.data && resp.data.length > 0;
   const canNavigate = resp?.action?.type === "NAVIGATE" && resp.action.screen !== "NONE";
- 
+  const route = canNavigate ? resolveRoute(resp!.action.screen, resp!.action.id) : null;
+
   return (
     <div
       style={{
@@ -173,7 +212,7 @@ function MessageBubble({
         )}
         {msg.text}
       </div>
- 
+
       {hasData && (
         <div style={{ maxWidth: "88%", width: "100%" }}>
           {resp!.data.slice(0, 6).map((item, i) => (
@@ -186,10 +225,11 @@ function MessageBubble({
           )}
         </div>
       )}
- 
-      {canNavigate && onNavigate && (
+
+      {/* Navigation button — only shown when we have a valid route */}
+      {route && (
         <button
-          onClick={() => onNavigate(resp!.action.screen, resp!.action.id)}
+          onClick={() => onNavigateTo(resp!.action.screen, resp!.action.id)}
           style={{
             fontSize: "11px",
             color: "#0070F2",
@@ -204,18 +244,19 @@ function MessageBubble({
           }}
         >
           <CheckCircle2 size={10} />
-          Open {resp!.action.screen.replace(/_/g, " ")}
+          Open {resp!.action.screen.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}
           {resp!.action.id ? ` → ${resp!.action.id}` : ""}
         </button>
       )}
- 
+
       <div style={{ fontSize: "10px", color: "#b0b0b0" }}>{formatTime(msg.timestamp)}</div>
     </div>
   );
 }
- 
+
 // ── Main chatbot component ─────────────────────────────────────────────────────
-export function ProcurementChatbot({ onNavigate, apiBase = "" }: Props) {
+export function ProcurementChatbot({ apiBase = "" }: Props) {
+  const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [minimized, setMinimized] = useState(false);
   const [input, setInput] = useState("");
@@ -228,42 +269,52 @@ export function ProcurementChatbot({ onNavigate, apiBase = "" }: Props) {
       timestamp: new Date(),
     },
   ]);
- 
+
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
- 
+
   useEffect(() => {
     if (open && !minimized) {
       bottomRef.current?.scrollIntoView({ behavior: "smooth" });
       inputRef.current?.focus();
     }
   }, [messages, open, minimized]);
- 
+
+  // ── Navigation handler — uses React Router ─────────────────────────────────
+  const handleNavigate = (screen: string, id?: string) => {
+    const route = resolveRoute(screen, id);
+    if (route) {
+      navigate(route);
+      // Close or minimise the chatbot so the page is visible
+      setMinimized(true);
+    }
+  };
+
   const send = async (text: string) => {
     const trimmed = text.trim();
     if (!trimmed || loading) return;
- 
+
     const userMsg: Message = { id: uid(), from: "user", text: trimmed, timestamp: new Date() };
     setMessages((prev) => [...prev, userMsg]);
     setInput("");
     setLoading(true);
- 
+
     try {
       const res = await fetch(`${apiBase}/api/chatbot/message`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: trimmed }),
       });
- 
+
       if (!res.ok) throw new Error(`Server error: ${res.status}`);
- 
+
       const json = await res.json();
       const botResp: BotResponse = json?.data?.chatbot_response ?? {
         message: "Unexpected response from server.",
         action: { type: "NONE", screen: "NONE" },
         data: [],
       };
- 
+
       const botMsg: Message = {
         id: uid(),
         from: "bot",
@@ -272,12 +323,16 @@ export function ProcurementChatbot({ onNavigate, apiBase = "" }: Props) {
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, botMsg]);
- 
-      // Auto-trigger navigation if the action says so
-      if (botResp.action?.type === "NAVIGATE" && botResp.action.screen !== "NONE" && onNavigate) {
-        // Short delay so user can see the message first
+
+      // Auto-navigate for direct document lookups (NAVIGATE action with a detail screen)
+      if (
+        botResp.action?.type === "NAVIGATE" &&
+        botResp.action.screen !== "NONE" &&
+        // Only auto-navigate for specific detail pages, not list pages
+        botResp.action.screen.endsWith("_DETAIL")
+      ) {
         setTimeout(() => {
-          onNavigate?.(botResp.action.screen, botResp.action.id);
+          handleNavigate(botResp.action.screen, botResp.action.id);
         }, 800);
       }
     } catch (err) {
@@ -292,14 +347,14 @@ export function ProcurementChatbot({ onNavigate, apiBase = "" }: Props) {
       setLoading(false);
     }
   };
- 
+
   const onKey = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       void send(input);
     }
   };
- 
+
   const clearChat = () => {
     setMessages([
       {
@@ -310,7 +365,7 @@ export function ProcurementChatbot({ onNavigate, apiBase = "" }: Props) {
       },
     ]);
   };
- 
+
   return (
     <>
       {/* Floating trigger button */}
@@ -338,7 +393,7 @@ export function ProcurementChatbot({ onNavigate, apiBase = "" }: Props) {
           <MessageSquare size={22} color="#ffffff" />
         </button>
       )}
- 
+
       {/* Chat window */}
       {open && (
         <div
@@ -403,7 +458,7 @@ export function ProcurementChatbot({ onNavigate, apiBase = "" }: Props) {
               <X size={14} color="#ffffff" />
             </button>
           </div>
- 
+
           {!minimized && (
             <>
               {/* Message list */}
@@ -417,7 +472,7 @@ export function ProcurementChatbot({ onNavigate, apiBase = "" }: Props) {
                 }}
               >
                 {messages.map((msg) => (
-                  <MessageBubble key={msg.id} msg={msg} onNavigate={onNavigate} />
+                  <MessageBubble key={msg.id} msg={msg} onNavigateTo={handleNavigate} />
                 ))}
                 {loading && (
                   <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "8px" }}>
@@ -427,7 +482,7 @@ export function ProcurementChatbot({ onNavigate, apiBase = "" }: Props) {
                 )}
                 <div ref={bottomRef} />
               </div>
- 
+
               {/* Suggestion chips */}
               <div
                 style={{
@@ -459,7 +514,7 @@ export function ProcurementChatbot({ onNavigate, apiBase = "" }: Props) {
                   </button>
                 ))}
               </div>
- 
+
               {/* Input row */}
               <div
                 style={{
@@ -498,8 +553,7 @@ export function ProcurementChatbot({ onNavigate, apiBase = "" }: Props) {
                     height: "32px",
                     borderRadius: "3px",
                     border: "none",
-                    backgroundColor:
-                      !input.trim() || loading ? "#d9d9d9" : "#0070F2",
+                    backgroundColor: !input.trim() || loading ? "#d9d9d9" : "#0070F2",
                     color: "#ffffff",
                     cursor: !input.trim() || loading ? "default" : "pointer",
                     display: "flex",
@@ -511,7 +565,7 @@ export function ProcurementChatbot({ onNavigate, apiBase = "" }: Props) {
                   <Send size={14} />
                 </button>
               </div>
- 
+
               {/* Footer clear */}
               <div
                 style={{
@@ -540,7 +594,7 @@ export function ProcurementChatbot({ onNavigate, apiBase = "" }: Props) {
           )}
         </div>
       )}
- 
+
       {/* Keyframe for spinner */}
       <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
     </>

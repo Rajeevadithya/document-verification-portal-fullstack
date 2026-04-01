@@ -1,10 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, CheckCircle2, ChevronDown, ChevronUp, FileText, ShoppingCart } from "lucide-react";
+import { FileText, ShoppingCart, Truck } from "lucide-react";
 import { getDashboardStages, getDashboardSummary, getRecentActivity } from "../lib/api";
 import { formatDateTime, statusTone } from "../lib/format";
 import type { DashboardSummary, RecentActivityItem, StageKey, StageStatusRecord } from "../lib/types";
-
-type SortKey = "type" | "total" | "uploaded" | "missing" | "ocrReview";
 
 type SummaryRow = {
   type: string;
@@ -25,8 +23,6 @@ export function Dashboard() {
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [stages, setStages] = useState<Record<StageKey, StageStatusRecord[]> | null>(null);
   const [recentActivity, setRecentActivity] = useState<RecentActivityItem[]>([]);
-  const [sortKey, setSortKey] = useState<SortKey>("type");
-  const [sortAsc, setSortAsc] = useState(true);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -53,7 +49,7 @@ export function Dashboard() {
 
   const summaryRows = useMemo<SummaryRow[]>(() => {
     if (!summary || !stages) return [];
-    const rows: SummaryRow[] = ["PR", "PO", "GRN", "INVOICE"].map((stage) => ({
+    const rows: SummaryRow[] = ["PR", "PO", "GRN"].map((stage) => ({
       type: stageLabel(stage as StageKey),
       total: summary.document_upload_status[stage as StageKey].total,
       uploaded: summary.document_upload_status[stage as StageKey].with_docs,
@@ -77,30 +73,6 @@ export function Dashboard() {
     return [...rows, totals];
   }, [stages, summary]);
 
-  const sortedRows = useMemo(() => {
-    return [...summaryRows].sort((a, b) => {
-      if (a.type === "Total") return 1;
-      if (b.type === "Total") return -1;
-      const av = a[sortKey];
-      const bv = b[sortKey];
-      if (typeof av === "string" && typeof bv === "string")
-        return sortAsc ? av.localeCompare(bv) : bv.localeCompare(av);
-      return sortAsc ? Number(av) - Number(bv) : Number(bv) - Number(av);
-    });
-  }, [sortAsc, sortKey, summaryRows]);
-
-  const handleSort = (key: SortKey) => {
-    if (sortKey === key) setSortAsc((c) => !c);
-    else { setSortKey(key); setSortAsc(true); }
-  };
-
-  const SortIcon = ({ column }: { column: SortKey }) =>
-    sortKey === column ? (
-      sortAsc ? <ChevronUp size={11} className="inline ml-1" /> : <ChevronDown size={11} className="inline ml-1" />
-    ) : (
-      <ChevronDown size={11} className="inline ml-1 opacity-30" />
-    );
-
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full" style={{ color: "#6A6D70" }}>
@@ -118,7 +90,7 @@ export function Dashboard() {
       >
         <div>
           <div style={{ fontSize: "11px", color: "#8a8b8c" }}>Home</div>
-          <h1 style={{ fontSize: "16px", fontWeight: "600", color: "#32363a", margin: 0 }}>Dashboard</h1>
+          <h1 style={{ fontSize: "16px", fontWeight: "600", color: "#32363a", margin: 0 }}>Global Dashboard</h1>
         </div>
       </div>
 
@@ -134,21 +106,20 @@ export function Dashboard() {
 
         {/* ── KPI cards ─────────────────────────────────────────────── */}
         {summary && (
-          <div className="grid grid-cols-4 gap-3">
+          <div className="grid grid-cols-3 gap-3">
             {[
-              { label: "Total PR Documents", value: summary.document_upload_status.PR.with_docs,  sub: `${summary.document_upload_status.PR.missing} missing`,  icon: FileText,     color: "#0070F2", bg: "#E8F1FB" },
-              { label: "Total PO Documents", value: summary.document_upload_status.PO.with_docs,  sub: `${summary.document_upload_status.PO.missing} missing`,  icon: ShoppingCart, color: "#107E3E", bg: "#EEF5EC" },
-              { label: "OCR Reviews",        value: summary.ocr_summary.review + summary.ocr_summary.invalid, sub: `${summary.ocr_summary.valid} valid`,        icon: AlertTriangle, color: "#E9730C", bg: "#FEF3E8" },
-              { label: "Unread Notifications", value: summary.notifications.unread, sub: `${summary.miro_sent} sent to MIRO`, icon: CheckCircle2, color: "#BB0000", bg: "#FBEAEA" },
+              { label: "Total PR Documents", value: summary.document_upload_status.PR.with_docs, sub: `${summary.document_upload_status.PR.missing} not uploaded`, icon: FileText, color: "#0070F2", bg: "#E8F1FB" },
+              { label: "Total PO Documents", value: summary.document_upload_status.PO.with_docs, sub: `${summary.document_upload_status.PO.missing} not uploaded`, icon: ShoppingCart, color: "#107E3E", bg: "#EEF5EC" },
+              { label: "Total GRN Documents", value: summary.document_upload_status.GRN.with_docs, sub: `${summary.document_upload_status.GRN.missing} not uploaded`, icon: Truck, color: "#E9730C", bg: "#FEF3E8" },
             ].map((card) => (
               <div
                 key={card.label}
                 className="border flex items-center gap-3 p-3"
-                style={{ backgroundColor: "#ffffff", borderColor: "#d9d9d9", borderRadius: "2px" }}
+                style={{ backgroundColor: "#ffffff", borderColor: "#d9d9d9", borderRadius: "18px" }}
               >
                 <div
                   className="flex items-center justify-center flex-shrink-0"
-                  style={{ width: "40px", height: "40px", backgroundColor: card.bg, borderRadius: "2px" }}
+                  style={{ width: "40px", height: "40px", backgroundColor: card.bg, borderRadius: "14px" }}
                 >
                   <card.icon size={18} color={card.color} />
                 </div>
@@ -165,7 +136,7 @@ export function Dashboard() {
         {/* ── Tables ────────────────────────────────────────────────── */}
         <div className="grid grid-cols-2 gap-4">
           {/* Document summary */}
-          <div className="border" style={{ backgroundColor: "#ffffff", borderColor: "#d9d9d9", borderRadius: "2px" }}>
+          <div className="border overflow-hidden" style={{ backgroundColor: "#ffffff", borderColor: "#d9d9d9", borderRadius: "18px" }}>
             <div className="px-4 py-2 border-b flex items-center justify-between" style={{ borderColor: "#d9d9d9", backgroundColor: "#f5f5f5" }}>
               <span style={{ fontSize: "13px", fontWeight: "600", color: "#32363a" }}>Document Summary</span>
             </div>
@@ -173,21 +144,19 @@ export function Dashboard() {
               <table className="w-full" style={{ borderCollapse: "collapse" }}>
                 <thead>
                   <tr style={{ backgroundColor: "#f5f5f5", borderBottom: "1px solid #d9d9d9" }}>
-                    {(["type", "total", "uploaded", "missing", "ocrReview"] as SortKey[]).map((col) => (
+                    {["Document Type", "Total", "Uploaded", "Not Uploaded", "OCR Review"].map((label) => (
                       <th
-                        key={col}
-                        onClick={() => handleSort(col)}
-                        className="text-left cursor-pointer select-none"
+                        key={label}
+                        className="text-left"
                         style={{ padding: "6px 12px", fontSize: "12px", fontWeight: "600", color: "#32363a", borderRight: "1px solid #e5e5e5", whiteSpace: "nowrap" }}
                       >
-                        {col === "type" ? "Document Type" : col === "ocrReview" ? "OCR Review" : col.charAt(0).toUpperCase() + col.slice(1)}
-                        <SortIcon column={col} />
+                        {label}
                       </th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {sortedRows.map((row, i) => (
+                  {summaryRows.map((row, i) => (
                     <tr key={row.type} style={{ borderBottom: "1px solid #eeeeee", backgroundColor: row.type === "Total" ? "#f5f5f5" : i % 2 === 0 ? "#ffffff" : "#fafafa" }}>
                       <td style={{ padding: "6px 12px", fontSize: "12px", color: "#32363a", fontWeight: row.type === "Total" ? "600" : "400", borderRight: "1px solid #e5e5e5" }}>{row.type}</td>
                       <td style={{ padding: "6px 12px", fontSize: "12px", color: "#32363a", borderRight: "1px solid #e5e5e5", textAlign: "right" }}>{row.total}</td>
@@ -202,7 +171,7 @@ export function Dashboard() {
           </div>
 
           {/* Recent Activity */}
-          <div className="border" style={{ backgroundColor: "#ffffff", borderColor: "#d9d9d9", borderRadius: "2px" }}>
+          <div className="border overflow-hidden" style={{ backgroundColor: "#ffffff", borderColor: "#d9d9d9", borderRadius: "18px" }}>
             <div className="px-4 py-2 border-b" style={{ borderColor: "#d9d9d9", backgroundColor: "#f5f5f5" }}>
               <span style={{ fontSize: "13px", fontWeight: "600", color: "#32363a" }}>Recent Activity</span>
             </div>

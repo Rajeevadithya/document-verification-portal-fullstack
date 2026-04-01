@@ -6,11 +6,11 @@ Collection: purchase_requisitions
 ----------------------------------
 {
     "_id": ObjectId,
-    "pr_number": str (unique, e.g. "PR-1001"),
-    "document_type": str,           # PurchaseRequisitionType
+    "purchaseRequisitionNumber": str (unique, e.g. "PR-1001"),
+    "purchaseDocumentType": str,           # PurchaseRequisitionType
     "items": [
         {
-            "item_number": str,     # PurchaseRequisitionItem
+            "itemNumber": str,     # PurchaseRequisitionItem
             "material": str,
             "unit_of_measure": str, # baseunit
             "quantity": float,      # RequestedQuantity
@@ -30,16 +30,16 @@ Collection: purchase_orders
 -----------------------------
 {
     "_id": ObjectId,
-    "po_number": str (unique, e.g. "PO-2001"),
-    "pr_number": str,               # linked PR
-    "document_type": str,           # PurchaseOrderType
-    "purchase_organization": str,   # PurchasingOrganization
+    "purchaseOrderNumber": str (unique, e.g. "PO-2001"),
+    "purchaseRequisitionNumber": str,               # linked PR
+    "purchaseDocumentType": str,           # PurchaseOrderType
+    "purchaseOrganization": str,   # PurchasingOrganization
     "purchase_group": str,          # PurchasingGroup
-    "company_code": str,            # CompanyCode
+    "companyCode": str,            # CompanyCode
     "vendor": str,                  # Supplier
     "items": [
         {
-            "item_number": str,     # PurchaseOrderItem
+            "itemNumber": str,     # PurchaseOrderItem
             "material": str,
             "quantity": float,      # OrderQuantity
             "net_price": float,     # purgreleasetimetotalamount
@@ -57,10 +57,10 @@ Collection: goods_receipts
 ----------------------------
 {
     "_id": ObjectId,
-    "grn_number": str (unique, e.g. "GRN-3001"),
-    "po_number": str,               # PurchaseOrder link
-    "document_date": str,           # ISO date
-    "posting_date": str,            # ISO date
+    "materialDocumentNumber": str (unique, e.g. "GRN-3001"),
+    "purchaseOrderNumber": str,               # PurchaseOrder link
+    "documentDate": str,           # ISO date
+    "postingDate": str,            # ISO date
     "items": [
         {
             "item": str,            # MaterialDocumentItem
@@ -83,9 +83,9 @@ Collection: invoice_verifications
 {
     "_id": ObjectId,
     "invoice_number": str (unique, e.g. "INV-4001"),
-    "pr_number": str,
-    "po_number": str,
-    "grn_number": str,
+    "purchaseRequisitionNumber": str,
+    "purchaseOrderNumber": str,
+    "materialDocumentNumber": str,
     "status": str,                  # PENDING | SENT_TO_MIRO | COMPLETED
     "miro_redirect_url": str,
     "created_at": datetime,
@@ -133,7 +133,7 @@ Collection: notifications
 }
 """
 
-from app import mongo
+from backend.app import mongo
 from datetime import datetime
 
 
@@ -142,15 +142,15 @@ def init_indexes():
     db = mongo.db
 
     # Unique indexes
-    db.purchase_requisitions.create_index("pr_number", unique=True)
-    db.purchase_orders.create_index("po_number", unique=True)
-    db.goods_receipts.create_index("grn_number", unique=True)
+    db.purchase_requisitions.create_index("purchaseRequisitionNumber", unique=True)
+    db.purchase_orders.create_index("purchaseOrderNumber", unique=True)
+    db.goods_receipts.create_index("materialDocumentNumber", unique=True)
     db.invoice_verifications.create_index("invoice_number", unique=True)
 
     # Query indexes
-    db.purchase_orders.create_index("pr_number")
-    db.goods_receipts.create_index("po_number")
-    db.invoice_verifications.create_index([("pr_number", 1), ("po_number", 1), ("grn_number", 1)])
+    db.purchase_orders.create_index("purchaseRequisitionNumber")
+    db.goods_receipts.create_index("purchaseOrderNumber")
+    db.invoice_verifications.create_index([("purchaseRequisitionNumber", 1), ("purchaseOrderNumber", 1), ("materialDocumentNumber", 1)])
 
     db.documents.create_index([("stage", 1), ("reference_number", 1)])
     db.documents.create_index("is_active")

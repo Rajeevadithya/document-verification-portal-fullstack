@@ -18,8 +18,13 @@ from datetime import datetime
 import glob
 import pandas as pd
  
-sys.path.insert(0, os.path.dirname(__file__))
-from app import create_app, mongo
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+REPO_ROOT = os.path.dirname(CURRENT_DIR)
+
+if REPO_ROOT not in sys.path:
+    sys.path.insert(0, REPO_ROOT)
+
+from backend.app import create_app, mongo
  
 app = create_app()
  

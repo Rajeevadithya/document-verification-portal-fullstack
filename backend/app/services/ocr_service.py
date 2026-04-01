@@ -125,13 +125,15 @@ def validate_document(file_path: str, stage: str, reference_number: str,
     cross_reference_valid = True  # default true unless PO check fails
 
     # ── type check ──
-    if detected_stage != stage.upper():
-        if detected_stage:
-            issues.append(
-                f"Document appears to be a {detected_stage} document, expected {stage.upper()}."
-            )
-        else:
-            issues.append(f"Could not identify document type. Expected {stage.upper()}.")
+    type_conflict = detected_stage is not None and detected_stage != stage.upper()
+    type_unknown = detected_stage is None
+
+    if type_conflict:
+        issues.append(
+            f"Document appears to be a {detected_stage} document, expected {stage.upper()}."
+        )
+    elif type_unknown and not expected_number_found:
+        issues.append(f"Could not confidently identify document type for {stage.upper()}.")
 
     # ── number presence check ──
     if not expected_number_found:
@@ -147,14 +149,23 @@ def validate_document(file_path: str, stage: str, reference_number: str,
             )
 
     # ── confidence scoring ──
-    type_ok = (detected_stage == stage.upper())
+    type_ok = detected_stage == stage.upper()
     num_ok = expected_number_found
     xref_ok = cross_reference_valid
 
-    if stage.upper() == "PO":
-        score = sum([type_ok * 0.4, num_ok * 0.35, xref_ok * 0.25])
+    if type_ok:
+        type_score = 0.4 if stage.upper() == "PO" else 0.5
+    elif type_unknown:
+        # OCR can miss keywords on otherwise correct scans, so don't force REVIEW
+        # when the expected document number (and linked PR for PO) are present.
+        type_score = 0.25
     else:
-        score = sum([type_ok * 0.5, num_ok * 0.5])
+        type_score = 0.0
+
+    if stage.upper() == "PO":
+        score = type_score + (0.35 if num_ok else 0.0) + (0.25 if xref_ok else 0.0)
+    else:
+        score = type_score + (0.5 if num_ok else 0.0)
 
     # ── final status ──
     if score >= 0.75:

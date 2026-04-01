@@ -29,12 +29,12 @@ def format_pr_sections(pr_doc: dict | None) -> dict | None:
 
     data = serialize_doc(pr_doc)
     data["header_data"] = {
-        "pr_number": data.get("pr_number"),
-        "document_type": data.get("document_type"),
+        "purchaseRequisitionNumber": data.get("purchaseRequisitionNumber"),
+        "purchaseDocumentType": data.get("purchaseDocumentType"),
     }
     data["item_data"] = [
         {
-            "item_number": item.get("item_number"),
+            "itemNumber": item.get("itemNumber"),
             "material": item.get("material"),
             "unit_of_measure": item.get("unit_of_measure"),
             "quantity": item.get("quantity"),
@@ -54,16 +54,16 @@ def format_po_sections(po_doc: dict | None) -> dict | None:
 
     data = serialize_doc(po_doc)
     data["header_data"] = {
-        "document_type": data.get("document_type"),
-        "purchase_organization": data.get("purchase_organization"),
-        "purchase_requisition_number": data.get("pr_number"),
+        "purchaseDocumentType": data.get("purchaseDocumentType"),
+        "purchaseOrganization": data.get("purchaseOrganization"),
+        "purchaseRequisitionNumber": data.get("purchaseRequisitionNumber"),
         "purchase_group": data.get("purchase_group"),
-        "company_code": data.get("company_code"),
+        "companyCode": data.get("companyCode"),
     }
     data["item_data"] = [
         {
             "vendor": data.get("vendor"),
-            "item_number": item.get("item_number"),
+            "itemNumber": item.get("itemNumber"),
             "material": item.get("material"),
             "quantity": item.get("quantity"),
             "net_price": item.get("net_price"),
@@ -81,13 +81,13 @@ def format_grn_sections(grn_doc: dict | None, purchase_requisition_number: str |
 
     data = serialize_doc(grn_doc)
     data["header_data"] = {
-        "goods_receipt_number": data.get("grn_number"),
-        "purchase_requisition_number": purchase_requisition_number,
+        "goods_receipt_number": data.get("materialDocumentNumber"),
+        "purchaseRequisitionNumber": purchase_requisition_number,
     }
     data["item_data"] = [
         {
-            "document_date": data.get("document_date"),
-            "posting_date": data.get("posting_date"),
+            "documentDate": data.get("documentDate"),
+            "postingDate": data.get("postingDate"),
             "item": item.get("item"),
             "material": item.get("material"),
             "unit_of_measure": item.get("unit_of_measure"),

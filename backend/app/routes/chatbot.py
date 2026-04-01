@@ -33,8 +33,8 @@ import json
 import logging
 from datetime import datetime, timezone
 from flask import Blueprint, request
-from app import mongo
-from app.utils.helpers import serialize_doc, success_response, error_response
+from backend.app import mongo
+from backend.app.utils.helpers import serialize_doc, success_response, error_response
 
 import google.generativeai as genai
 
@@ -119,13 +119,13 @@ def _extract_navigate_screen(text: str) -> dict:
 
 # ── RAG data fetchers ─────────────────────────────────────────────────────────
 def _fetch_pr(pr_number: str) -> dict:
-    pr = mongo.db.purchase_requisitions.find_one({"pr_number": f"PR-{pr_number}"}) or \
-         mongo.db.purchase_requisitions.find_one({"pr_number": pr_number})
+    pr = mongo.db.purchase_requisitions.find_one({"purchaseRequisitionNumber": f"PR-{pr_number}"}) or \
+         mongo.db.purchase_requisitions.find_one({"purchaseRequisitionNumber": pr_number})
     if not pr:
         return {}
     data = serialize_doc(pr)
     docs = list(mongo.db.documents.find(
-        {"stage": "PR", "reference_number": pr.get("pr_number"), "is_active": True},
+        {"stage": "PR", "reference_number": pr.get("purchaseRequisitionNumber"), "is_active": True},
         {"original_filename": 1, "ocr_status": 1, "uploaded_at": 1, "_id": 0}
     ))
     data["uploaded_documents"] = serialize_doc(docs)
@@ -134,13 +134,13 @@ def _fetch_pr(pr_number: str) -> dict:
 
 
 def _fetch_po(po_number: str) -> dict:
-    po = mongo.db.purchase_orders.find_one({"po_number": f"PO-{po_number}"}) or \
-         mongo.db.purchase_orders.find_one({"po_number": po_number})
+    po = mongo.db.purchase_orders.find_one({"purchaseOrderNumber": f"PO-{po_number}"}) or \
+         mongo.db.purchase_orders.find_one({"purchaseOrderNumber": po_number})
     if not po:
         return {}
     data = serialize_doc(po)
     docs = list(mongo.db.documents.find(
-        {"stage": "PO", "reference_number": po.get("po_number"), "is_active": True},
+        {"stage": "PO", "reference_number": po.get("purchaseOrderNumber"), "is_active": True},
         {"original_filename": 1, "ocr_status": 1, "uploaded_at": 1, "_id": 0}
     ))
     data["uploaded_document"] = serialize_doc(docs[0]) if docs else None
@@ -149,13 +149,13 @@ def _fetch_po(po_number: str) -> dict:
 
 
 def _fetch_grn(grn_number: str) -> dict:
-    grn = mongo.db.goods_receipts.find_one({"grn_number": f"GRN-{grn_number}"}) or \
-          mongo.db.goods_receipts.find_one({"grn_number": grn_number})
+    grn = mongo.db.goods_receipts.find_one({"materialDocumentNumber": f"GRN-{grn_number}"}) or \
+          mongo.db.goods_receipts.find_one({"materialDocumentNumber": grn_number})
     if not grn:
         return {}
     data = serialize_doc(grn)
     docs = list(mongo.db.documents.find(
-        {"stage": "GRN", "reference_number": grn.get("grn_number"), "is_active": True},
+        {"stage": "GRN", "reference_number": grn.get("materialDocumentNumber"), "is_active": True},
         {"original_filename": 1, "ocr_status": 1, "uploaded_at": 1, "_id": 0}
     ))
     data["uploaded_document"] = serialize_doc(docs[0]) if docs else None
@@ -182,9 +182,9 @@ def _fetch_missing_docs() -> dict:
     db = mongo.db
     result = {}
     for stage_key, coll, ref_field in [
-        ("PR", "purchase_requisitions", "pr_number"),
-        ("PO", "purchase_orders", "po_number"),
-        ("GRN", "goods_receipts", "grn_number"),
+        ("PR", "purchase_requisitions", "purchaseRequisitionNumber"),
+        ("PO", "purchase_orders", "purchaseOrderNumber"),
+        ("GRN", "goods_receipts", "materialDocumentNumber"),
         ("INVOICE", "invoice_verifications", "invoice_number"),
     ]:
         all_refs = [r[ref_field] for r in db[coll].find({}, {ref_field: 1, "_id": 0})]
@@ -376,7 +376,7 @@ def _rule_based_fallback(user_text: str, rag: dict) -> dict:
             "message": (f"PR {rec.get('pr_number')} — Status: {rec.get('status', 'N/A')} | "
                         f"{items} line item(s) | "
                         f"Document: {'✓ Uploaded' if has else '✗ Missing'}"),
-            "action": {"type": "NAVIGATE", "screen": "PR_DETAIL", "id": rec.get("pr_number")},
+            "action": {"type": "NAVIGATE", "screen": "PR_DETAIL", "id": rec.get("purchaseRequisitionNumber")},
             "data": [rec]
         }
 
@@ -389,7 +389,7 @@ def _rule_based_fallback(user_text: str, rag: dict) -> dict:
             "message": (f"PO {rec.get('po_number')} — Vendor: {rec.get('vendor', 'N/A')} | "
                         f"Status: {rec.get('status', 'N/A')} | "
                         f"Document: {'✓ Uploaded' if has else '✗ Missing'}"),
-            "action": {"type": "NAVIGATE", "screen": "PO_DETAIL", "id": rec.get("po_number")},
+            "action": {"type": "NAVIGATE", "screen": "PO_DETAIL", "id": rec.get("purchaseOrderNumber")},
             "data": [rec]
         }
 
@@ -401,7 +401,7 @@ def _rule_based_fallback(user_text: str, rag: dict) -> dict:
             "message": (f"GRN {rec.get('grn_number')} — PO: {rec.get('po_number', 'N/A')} | "
                         f"Status: {rec.get('status', 'N/A')} | "
                         f"Document: {'✓ Uploaded' if rec.get('has_document') else '✗ Missing'}"),
-            "action": {"type": "NAVIGATE", "screen": "GRN_DETAIL", "id": rec.get("grn_number")},
+            "action": {"type": "NAVIGATE", "screen": "GRN_DETAIL", "id": rec.get("materialDocumentNumber")},
             "data": [rec]
         }
 

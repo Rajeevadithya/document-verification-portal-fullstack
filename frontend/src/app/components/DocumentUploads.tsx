@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router";
+import { ChevronDown } from "lucide-react";
 import { GRNModule } from "./modules/GRNModule";
 import { InvoiceModule } from "./modules/InvoiceModule";
 import { POModule } from "./modules/POModule";
@@ -17,33 +18,97 @@ export function DocumentUploads() {
   const requestedTab = searchParams.get("tab");
   const defaultTab = useMemo(() => (MAIN_TABS.some((tab) => tab.id === requestedTab) ? requestedTab! : "PR"), [requestedTab]);
   const [activeTab, setActiveTab] = useState(defaultTab);
+  const [openMenu, setOpenMenu] = useState<string | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     setActiveTab(defaultTab);
   }, [defaultTab]);
 
-  const changeTab = (tab: string) => {
-    setActiveTab(tab);
+  useEffect(() => {
+    const handlePointerDown = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setOpenMenu(null);
+      }
+    };
+
+    window.addEventListener("mousedown", handlePointerDown);
+    return () => window.removeEventListener("mousedown", handlePointerDown);
+  }, []);
+
+  const changeTabAction = (tab: string, action: "upload" | "change" | "view") => {
     const next = new URLSearchParams(searchParams);
     next.set("tab", tab);
+    next.delete("doc");
+    next.set("action", action);
+    setActiveTab(tab);
     setSearchParams(next, { replace: true });
+    setOpenMenu(null);
   };
 
   return (
     <div className="flex flex-col h-full">
       <div className="px-5 py-3 border-b flex items-center justify-between flex-shrink-0" style={{ backgroundColor: "#ffffff", borderColor: "#d9d9d9" }}>
         <div>
-          <div style={{ fontSize: "11px", color: "#8a8b8c" }}>Home &rsaquo; Document Verification</div>
+          <div style={{ fontSize: "11px", color: "#8a8b8c" }}>Home &rsaquo; Invoice Verification</div>
           <h1 style={{ fontSize: "16px", fontWeight: "600", color: "#32363a", margin: 0 }}>Invoice Verification</h1>
         </div>
       </div>
 
-      <div className="flex border-b flex-shrink-0" style={{ backgroundColor: "#ffffff", borderColor: "#d9d9d9" }}>
-        {MAIN_TABS.map((tab) => (
-          <button key={tab.id} onClick={() => changeTab(tab.id)} className="px-5 py-2 relative border-r" style={{ fontSize: "12px", fontWeight: activeTab === tab.id ? "600" : "400", color: activeTab === tab.id ? "#0070F2" : "#32363a", backgroundColor: activeTab === tab.id ? "#ffffff" : "#f5f5f5", borderColor: "#d9d9d9", borderBottom: activeTab === tab.id ? "2px solid #0070F2" : "2px solid transparent", whiteSpace: "nowrap" }}>
-            {tab.label}
-          </button>
-        ))}
+      <div ref={menuRef} className="px-5 py-3 border-b flex-shrink-0" style={{ backgroundColor: "#ffffff", borderColor: "#d9d9d9" }}>
+        <div className="flex items-center gap-1 flex-wrap">
+          {MAIN_TABS.map((tab, index) => (
+            <div key={tab.id} className="flex items-center">
+              <div
+                className="relative"
+              >
+                <button
+                  onClick={() => setOpenMenu((current) => (current === tab.id ? null : tab.id))}
+                  className="px-3 py-2 flex items-center gap-1 transition-colors"
+                  style={{
+                    fontSize: "12px",
+                    fontWeight: activeTab === tab.id ? "700" : "500",
+                    color: activeTab === tab.id ? "#0070F2" : "#32363a",
+                    backgroundColor: openMenu === tab.id || activeTab === tab.id ? "#f1f5f9" : "transparent",
+                    borderRadius: "999px",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  <span>{tab.label}</span>
+                  <ChevronDown size={14} />
+                </button>
+
+                {openMenu === tab.id && (
+                  <div
+                    className="absolute left-0 top-full mt-2 border"
+                    style={{ minWidth: "190px", backgroundColor: "#ffffff", borderColor: "#d9d9d9", borderRadius: "12px", boxShadow: "0 12px 32px rgba(15, 23, 42, 0.12)", zIndex: 10 }}
+                  >
+                    {(tab.id === "INV"
+                      ? [{ id: "view", label: "Display Data" }]
+                      : [
+                          { id: "upload", label: "Upload Document" },
+                          { id: "change", label: "Change Document" },
+                          { id: "view", label: "Display Document" },
+                        ]).map((action) => (
+                      <button
+                        key={action.id}
+                        onClick={() => changeTabAction(tab.id, action.id as "upload" | "change" | "view")}
+                        className="w-full text-left px-4 py-3 hover:bg-slate-100 transition-colors"
+                        style={{ fontSize: "12px", color: "#32363a", backgroundColor: "transparent" }}
+                      >
+                        {action.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {index < MAIN_TABS.length - 1 ? (
+                <span style={{ marginLeft: "10px", marginRight: "10px", color: "#94a3b8" }}>|</span>
+              ) : null}
+            </div>
+          ))}
+        </div>
       </div>
 
       <div className="flex-1 overflow-hidden">

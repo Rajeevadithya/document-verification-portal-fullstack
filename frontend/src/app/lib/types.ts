@@ -108,13 +108,17 @@ export type ValueHelpItem = {
 export type PRItem = {
   item_number: string;
   material: string;
-  unit_of_measure: string;
+  material_description: string;
+  plant: string;
   quantity: number;
+  price: number;
+  amount: number;
+  purchase_organization: string;
+  unit_of_measure?: string;
   valuation_price: number;
   delivery_date: string;
-  plant: string;
-  storage_location: string;
-  purchase_group: string;
+  storage_location?: string;
+  purchase_group?: string;
 };
 
 export type PRRecord = {
@@ -132,11 +136,14 @@ export type PRRecord = {
 export type POItem = {
   item_number: string;
   material: string;
+  material_description: string;
   quantity: number;
+  price: number;
+  amount: number;
   net_price: number;
   delivery_date: string;
   plant: string;
-  storage_location: string;
+  storage_location?: string;
 };
 
 export type PORecord = {
@@ -144,6 +151,8 @@ export type PORecord = {
   po_number: string;
   pr_number: string;
   document_type: string;
+  purchase_order_date: string;
+  net_order_value: number;
   purchase_organization: string;
   purchase_group: string;
   company_code: string;
@@ -158,13 +167,17 @@ export type PORecord = {
 
 export type GRNItem = {
   item: string;
+  item_number: string;
   material: string;
-  unit_of_measure: string;
+  material_description: string;
   quantity: number;
+  price: number;
+  amount: number;
   entry_unit: string;
   plant: string;
-  storage_location: string;
-  price: number;
+  purchase_order: string;
+  unit_of_measure?: string;
+  storage_location?: string;
 };
 
 export type GRNRecord = {

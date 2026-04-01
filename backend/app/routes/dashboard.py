@@ -6,8 +6,8 @@ GET /api/dashboard/stages    – per-stage document upload status
 GET /api/dashboard/recent-activity – last N document uploads across all stages
 """
 from flask import Blueprint, request
-from app import mongo
-from app.utils.helpers import serialize_doc, success_response
+from backend.app import mongo
+from backend.app.utils.helpers import serialize_doc, success_response
 
 dashboard_bp = Blueprint("dashboard", __name__)
 
@@ -85,13 +85,18 @@ def stage_status():
     """
     db = mongo.db
 
-    def build_stage(collection_name, number_field, stage_key):
-        records = list(db[collection_name].find(
-            {}, {number_field: 1, "status": 1, "_id": 0}
-        ))
+    def build_stage(collection_name, number_fields, stage_key):
+        projection = {field: 1 for field in number_fields}
+        projection["status"] = 1
+        projection["_id"] = 0
+
+        records = list(db[collection_name].find({}, projection))
         result = []
         for rec in records:
-            ref = rec[number_field]
+            ref = next((rec.get(field) for field in number_fields if rec.get(field)), None)
+            if not ref:
+                continue
+
             docs = list(db.documents.find(
                 {"stage": stage_key, "reference_number": ref, "is_active": True},
                 {"ocr_status": 1, "original_filename": 1, "uploaded_at": 1, "_id": 1}
@@ -106,10 +111,10 @@ def stage_status():
         return result
 
     data = {
-        "PR":      build_stage("purchase_requisitions", "pr_number",  "PR"),
-        "PO":      build_stage("purchase_orders",       "po_number",  "PO"),
-        "GRN":     build_stage("goods_receipts",        "grn_number", "GRN"),
-        "INVOICE": build_stage("invoice_verifications", "invoice_number", "INVOICE")
+        "PR":      build_stage("purchase_requisitions", ["purchaseRequisitionNumber", "pr_number"], "PR"),
+        "PO":      build_stage("purchase_orders", ["purchaseOrderNumber", "po_number"], "PO"),
+        "GRN":     build_stage("goods_receipts", ["materialDocumentNumber", "grn_number"], "GRN"),
+        "INVOICE": build_stage("invoice_verifications", ["invoice_number"], "INVOICE")
     }
     return success_response(data, "Stage statuses fetched")
 

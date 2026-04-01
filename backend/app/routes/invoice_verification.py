@@ -13,11 +13,11 @@ POST /api/invoice/<invoice_number>/miro-redirect – log MIRO handoff + return U
 import os
 from datetime import datetime
 from flask import Blueprint, request, send_file
-from app import mongo
-from app.utils.helpers import (
+from backend.app import mongo
+from backend.app.utils.helpers import (
     format_grn_sections, format_po_sections, format_pr_sections, serialize_doc, success_response, error_response, allowed_file
 )
-from app.services.document_service import (
+from backend.app.services.document_service import (
     save_document, change_document, delete_document, get_active_documents, get_document_by_id
 )
 
@@ -27,8 +27,8 @@ inv_bp = Blueprint("invoice_verification", __name__)
 @inv_bp.route("/", methods=["GET"])
 def list_invoices():
     cursor = mongo.db.invoice_verifications.find(
-        {}, {"invoice_number": 1, "pr_number": 1, "po_number": 1,
-             "grn_number": 1, "status": 1, "_id": 1}
+        {}, {"invoice_number": 1, "purchaseRequisitionNumber": 1, "purchaseOrderNumber": 1,
+             "materialDocumentNumber": 1, "status": 1, "_id": 1}
     ).sort("invoice_number", 1)
     data = serialize_doc(list(cursor))
     return success_response(data, "Invoices fetched")
@@ -43,19 +43,19 @@ def get_invoice_aggregated(invoice_number):
     if not inv:
         return error_response(f"Invoice '{invoice_number}' not found", 404)
 
-    pr_number  = inv.get("pr_number")
-    po_number  = inv.get("po_number")
-    grn_number = inv.get("grn_number")
+    pr_number  = inv.get("purchaseRequisitionNumber")
+    po_number  = inv.get("purchaseOrderNumber")
+    grn_number = inv.get("materialDocumentNumber")
 
-    pr_doc = mongo.db.purchase_requisitions.find_one({"pr_number": pr_number}) if pr_number else None
-    po_doc = mongo.db.purchase_orders.find_one({"po_number": po_number}) if po_number else None
-    grn_doc = mongo.db.goods_receipts.find_one({"grn_number": grn_number}) if grn_number else None
+    pr_doc = mongo.db.purchase_requisitions.find_one({"purchaseRequisitionNumber": pr_number}) if pr_number else None
+    po_doc = mongo.db.purchase_orders.find_one({"purchaseOrderNumber": po_number}) if po_number else None
+    grn_doc = mongo.db.goods_receipts.find_one({"materialDocumentNumber": grn_number}) if grn_number else None
 
     pr_data = format_pr_sections(pr_doc) if pr_doc else None
     po_data = format_po_sections(po_doc) if po_doc else None
     grn_data = format_grn_sections(
         grn_doc,
-        purchase_requisition_number=po_doc.get("pr_number") if po_doc else None,
+        purchase_requisition_number=po_doc.get("purchaseRequisitionNumber") if po_doc else None,
     ) if grn_doc else None
 
     # Docs
@@ -64,7 +64,7 @@ def get_invoice_aggregated(invoice_number):
     data = {
         "invoice": serialize_doc(inv),
         "purchase_requisition": pr_data,
-        "purchase_order": po_data,
+        "purchaseOrder": po_data,
         "goods_receipt": grn_data,
         "uploaded_document": inv_docs[0] if inv_docs else None,
         "has_document": len(inv_docs) > 0,
@@ -75,7 +75,7 @@ def get_invoice_aggregated(invoice_number):
 
 @inv_bp.route("/by-po/<po_number>", methods=["GET"])
 def get_invoice_by_po(po_number):
-    inv = mongo.db.invoice_verifications.find_one({"po_number": po_number})
+    inv = mongo.db.invoice_verifications.find_one({"purchaseOrderNumber": po_number})
     if not inv:
         return error_response(f"No invoice found for PO '{po_number}'", 404)
     return get_invoice_aggregated(inv["invoice_number"])

@@ -19,24 +19,17 @@ type Props = {
 
 const defaultColumns: { key: keyof ValueHelpItem; label: string }[] = [
   { key: "id", label: "Number" },
-  { key: "description", label: "Description" },
-  { key: "plant", label: "Plant" },
-  { key: "status", label: "Status" },
 ];
 
 export function ValueHelpDialog({ title, items, onSelect, onClose, columns = defaultColumns }: Props) {
   const [search, setSearch] = useState("");
-  const [plantFilter, setPlantFilter] = useState("");
 
   const filtered = items.filter((item) => {
     const matchSearch =
       !search ||
       Object.values(item).some((v) => v && String(v).toLowerCase().includes(search.toLowerCase()));
-    const matchPlant = !plantFilter || item.plant === plantFilter;
-    return matchSearch && matchPlant;
+    return matchSearch;
   });
-
-  const plants = [...new Set(items.map((i) => i.plant).filter(Boolean))];
 
   return (
     <div
@@ -62,7 +55,7 @@ export function ValueHelpDialog({ title, items, onSelect, onClose, columns = def
           <div className="flex items-center gap-2">
             <Search size={14} color="#ffffff" />
             <span style={{ fontSize: "13px", fontWeight: "600", color: "#ffffff" }}>
-              Value Help: {title}
+              {title}
             </span>
           </div>
           <button onClick={onClose}>
@@ -84,7 +77,7 @@ export function ValueHelpDialog({ title, items, onSelect, onClose, columns = def
                 type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search by number or description..."
+                placeholder="Search by number..."
                 className="w-full border pl-6 pr-2 py-1 outline-none"
                 style={{
                   fontSize: "12px",
@@ -94,24 +87,8 @@ export function ValueHelpDialog({ title, items, onSelect, onClose, columns = def
               />
             </div>
           </div>
-          {plants.length > 0 && (
-            <div className="flex items-center gap-1">
-              <span style={{ fontSize: "11px", color: "#32363a", fontWeight: "500" }}>Plant:</span>
-              <select
-                value={plantFilter}
-                onChange={(e) => setPlantFilter(e.target.value)}
-                className="border px-2 py-1 outline-none"
-                style={{ fontSize: "12px", borderColor: "#d9d9d9", borderRadius: "2px", color: "#32363a" }}
-              >
-                <option value="">All</option>
-                {plants.map((p) => (
-                  <option key={p} value={p}>{p}</option>
-                ))}
-              </select>
-            </div>
-          )}
           <button
-            onClick={() => { setSearch(""); setPlantFilter(""); }}
+            onClick={() => { setSearch(""); }}
             className="border px-3 py-1 hover:bg-gray-100"
             style={{ fontSize: "11px", borderColor: "#d9d9d9", color: "#32363a", borderRadius: "2px" }}
           >
@@ -129,7 +106,7 @@ export function ValueHelpDialog({ title, items, onSelect, onClose, columns = def
           <table className="w-full" style={{ borderCollapse: "collapse" }}>
             <thead style={{ position: "sticky", top: 0, zIndex: 1 }}>
               <tr style={{ backgroundColor: "#f5f5f5", borderBottom: "1px solid #d9d9d9" }}>
-                {columns.filter((c) => c.key !== "plant" || plants.length > 0).map((col) => (
+                {columns.map((col) => (
                   <th
                     key={col.key}
                     className="text-left"
@@ -164,7 +141,7 @@ export function ValueHelpDialog({ title, items, onSelect, onClose, columns = def
                       backgroundColor: i % 2 === 0 ? "#ffffff" : "#fafafa",
                     }}
                   >
-                    {columns.filter((c) => c.key !== "plant" || plants.length > 0).map((col) => (
+                    {columns.map((col) => (
                       <td
                         key={col.key}
                         style={{

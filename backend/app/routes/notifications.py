@@ -11,8 +11,8 @@ DELETE /api/notifications/<id>        – delete a notification
 from datetime import datetime
 from flask import Blueprint, request
 from bson import ObjectId
-from app import mongo
-from app.utils.helpers import serialize_doc, success_response, error_response
+from backend.app import mongo
+from backend.app.utils.helpers import serialize_doc, success_response, error_response
 
 notif_bp = Blueprint("notifications", __name__)
 

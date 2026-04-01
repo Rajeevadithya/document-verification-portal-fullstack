@@ -13,7 +13,7 @@ type AlertTone = "error" | "success" | "warning" | "neutral";
 type FooterAlert = {
   key: string;
   title: string;
-  description: string;
+  description: ReactNode;
   tone: AlertTone;
 };
 
@@ -37,13 +37,29 @@ function getValidationAlert(validation: ValidationState): FooterAlert | null {
   }
 
   if (validation.ocr_status === "INVALID" || validation.ocr_status === "REVIEW") {
+    const reasons = validation.ocr_rejection_detail?.failure_reasons ?? [];
+    const summary =
+      validation.ocr_rejection_detail?.summary ||
+      validation.ocr_rejection_detail?.overall_advice ||
+      "The latest document needs attention before it can move forward.";
+
     return {
       key: "ocr-review",
       title: validation.ocr_status === "INVALID" ? "Document rejected by OCR" : "OCR review required",
-      description:
-        validation.ocr_rejection_detail?.summary ||
-        validation.ocr_rejection_detail?.overall_advice ||
-        "The latest document needs attention before it can move forward.",
+      description: (
+        <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+          <div>{summary}</div>
+          {reasons.length > 0 ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+              {reasons.slice(0, 3).map((reason, index) => (
+                <div key={`${reason.check}-${index}`}>
+                  <strong>{reason.check}:</strong> {reason.found}. {reason.suggestion}
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      ),
       tone: "warning",
     };
   }
@@ -68,13 +84,14 @@ export function ModuleFooterAlerts({
   idleMessage: string;
 }) {
   const alerts: FooterAlert[] = [];
+  const isOcrValidationError = Boolean(error && error.toLowerCase().includes("ocr validation"));
 
   if (error) {
     alerts.push({
       key: "error",
-      title: "Action could not be completed",
+      title: isOcrValidationError ? "OCR validation blocked upload" : "Action could not be completed",
       description: error,
-      tone: "error",
+      tone: isOcrValidationError ? "warning" : "error",
     });
   }
 
@@ -93,8 +110,6 @@ export function ModuleFooterAlerts({
   return (
     <div className="border-t px-4 py-3 flex-shrink-0" style={{ backgroundColor: "#ffffff", borderColor: "#d9d9d9" }}>
       <div className="flex items-center gap-2 mb-2" style={{ fontSize: "11px", fontWeight: "600", color: "#32363a" }}>
-        <AlertCircle size={12} />
-        <span>FOOTER ALERTS</span>
       </div>
       {alerts.length === 0 ? (
         <div className="border px-3 py-2" style={{ borderColor: "#d9d9d9", backgroundColor: "#f7f7f7", borderRadius: "2px", fontSize: "12px", color: "#6A6D70" }}>
