@@ -18,19 +18,23 @@ logger = logging.getLogger(__name__)
 STAGE_KEYWORDS = {
     "PR": [
         "purchase requisition", "requisition", "pr number", "purchase req",
-        "material requisition", "requestedquantity", "pr-"
+        "material requisition", "requestedquantity", "pr-", "banfn"
     ],
     "PO": [
-        "purchase order", "po number", "vendor", "supplier",
-        "net price", "orderquantity", "po-", "purchase org"
+        "purchase order", "po number", "order quantity", "po-", "purchase org",
+        "ebeln", "net order value"
     ],
     "GRN": [
         "goods receipt", "grn", "goods received", "material document",
-        "posting date", "document date", "goods receipt note", "grn-"
+        "posting date", "document date", "goods receipt note", "grn-",
+        "movement type", "migo", "delivery note", "delivery challan",
+        "challan", "mat. doc", "mat doc", "mat.doc", "goods movement",
+        "store receipt", "receiving report", "storage location",
+        "goods issue", "srv", "slip"
     ],
     "INVOICE": [
-        "invoice", "tax invoice", "invoice number", "bill to",
-        "amount due", "gst", "invoice date", "inv-"
+        "tax invoice", "invoice", "invoice number", "bill to",
+        "amount due", "gst", "gstin", "invoice date", "inv-"
     ]
 }
 
@@ -70,12 +74,38 @@ def extract_text(file_path: str) -> str:
         text = _extract_text_from_image(file_path)
     return text
 
-def _detect_stage(text: str) -> str | None:
-    """Return detected stage name based on keyword density."""
+def _detect_stage(text: str, expected_stage: str = None, reference_number: str = None) -> str | None:
+    """Return detected stage name based on keyword density and procurement hierarchy."""
     lower = text.lower()
     scores = {}
     for stage, keywords in STAGE_KEYWORDS.items():
         scores[stage] = sum(1 for kw in keywords if kw in lower)
+
+    # 1. GRN documents commonly reference parent PO details ("purchase order", "vendor", etc.).
+    #    If primary GRN indicators exist, prioritize GRN over PO.
+    grn_primary = [
+        "goods receipt", "material document", "grn", "goods received",
+        "goods receipt note", "movement type", "migo", "delivery note",
+        "delivery challan", "challan", "store receipt", "receiving report",
+        "mat doc", "mat.doc", "mat. doc", "goods movement"
+    ]
+    if any(kw in lower for kw in grn_primary):
+        scores["GRN"] = scores.get("GRN", 0) + 5
+
+    # 2. Invoices commonly reference PO or GRN numbers.
+    inv_primary = ["tax invoice", "invoice", "invoice number", "bill to", "gst", "gstin"]
+    if any(kw in lower for kw in inv_primary):
+        scores["INVOICE"] = scores.get("INVOICE", 0) + 5
+
+    # 3. If expected reference number is present in document, boost expected stage
+    if expected_stage and reference_number and _find_number(text, reference_number):
+        exp_upper = expected_stage.upper()
+        scores[exp_upper] = scores.get(exp_upper, 0) + 10
+    elif expected_stage:
+        exp_upper = expected_stage.upper()
+        if scores.get(exp_upper, 0) > 0:
+            scores[exp_upper] = scores.get(exp_upper, 0) + 2
+
     best = max(scores, key=scores.get)
     return best if scores[best] > 0 else None
 
@@ -120,7 +150,7 @@ def validate_document(file_path: str, stage: str, reference_number: str,
     raw_text = extract_text(file_path)
     snippet = raw_text[:500].replace("\n", " ").strip()
 
-    detected_stage = _detect_stage(raw_text)
+    detected_stage = _detect_stage(raw_text, expected_stage=stage, reference_number=reference_number)
     expected_number_found = _find_number(raw_text, reference_number)
     cross_reference_valid = True  # default true unless PO check fails
 
