@@ -93,7 +93,7 @@ def _format_grn_response(grn_doc):
 
 
 # ── Ingest ────────────────────────────────────────────────────────────────────
-@grn_bp.route("/ingest", methods=["POST"])
+@grn_bp.route("/ingest", methods=["GET", "POST"])
 def ingest_grn():
     """
     POST body:
@@ -116,9 +116,15 @@ def ingest_grn():
         ]
     }
     """
+    if request.method == "GET":
+        return success_response(
+            {"endpoint": "/api/grn/ingest", "method": "POST", "expected_content_type": "application/json"},
+            "GRN Ingestion endpoint is active. Send a POST request with JSON payload to ingest GRN records."
+        )
+
     data = request.get_json()
     if not data:
-        return error_response("No data received", 400)
+        return error_response("No data received. Send JSON payload with 'materialDocumentNumber' and 'items'.", 400)
 
     po_number = data.get("purchaseOrderNumber") or data.get("purchaseOrder") or ""
 

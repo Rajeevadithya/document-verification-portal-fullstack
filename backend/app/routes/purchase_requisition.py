@@ -87,7 +87,7 @@ def _format_pr_response(pr_doc):
 
 
 # ── Ingest ────────────────────────────────────────────────────────────────────
-@pr_bp.route("/ingest", methods=["POST"])
+@pr_bp.route("/ingest", methods=["GET", "POST"])
 def ingest_pr():
     """
     POST body (single PR or list of PRs):
@@ -109,9 +109,15 @@ def ingest_pr():
         ]
     }
     """
+    if request.method == "GET":
+        return success_response(
+            {"endpoint": "/api/pr/ingest", "method": "POST", "expected_content_type": "application/json"},
+            "PR Ingestion endpoint is active. Send a POST request with JSON payload to ingest PR records."
+        )
+
     data = request.json
     if not data:
-        return error_response("No data received", 400)
+        return error_response("No data received. Send JSON payload with 'purchaseRequisitionNumber' and 'items'.", 400)
 
     def build_pr_doc(pr):
         items = []

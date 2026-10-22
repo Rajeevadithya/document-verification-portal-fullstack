@@ -96,7 +96,7 @@ def _format_po_response(po_doc):
 
 
 # ── Ingest ────────────────────────────────────────────────────────────────────
-@po_bp.route("/ingest", methods=["POST"])
+@po_bp.route("/ingest", methods=["GET", "POST"])
 def ingest_po():
     """
     POST body:
@@ -123,9 +123,15 @@ def ingest_po():
         ]
     }
     """
+    if request.method == "GET":
+        return success_response(
+            {"endpoint": "/api/po/ingest", "method": "POST", "expected_content_type": "application/json"},
+            "PO Ingestion endpoint is active. Send a POST request with JSON payload to ingest PO records."
+        )
+
     data = request.get_json()
     if not data:
-        return error_response("No data received", 400)
+        return error_response("No data received. Send JSON payload with 'purchaseOrderNumber' and 'items'.", 400)
 
     pr_number = data.get("purchaseRequisitionNumber") or data.get("purchaseRequisitionNumber") or ""
 

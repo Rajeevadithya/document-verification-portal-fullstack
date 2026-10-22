@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 import sys
 
@@ -12,4 +13,5 @@ from backend.app import create_app
 app = create_app()
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    port = int(os.getenv("PORT", 5100))
+    app.run(host="0.0.0.0", port=port, debug=True)
