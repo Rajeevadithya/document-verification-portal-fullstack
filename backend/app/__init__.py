@@ -13,6 +13,23 @@ def create_app():
     CORS(app, resources={r"/api/*": {"origins": "*"}})
     mongo.init_app(app)
 
+    # Auto-sanitize existing trailing whitespace in MongoDB records
+    try:
+        with app.app_context():
+            for coll_name, ref_field in [
+                ("purchase_requisitions", "purchaseRequisitionNumber"),
+                ("purchase_orders", "purchaseOrderNumber"),
+                ("goods_receipts", "materialDocumentNumber"),
+            ]:
+                coll = mongo.db[coll_name]
+                for doc in coll.find({}, {ref_field: 1}):
+                    val = doc.get(ref_field)
+                    if isinstance(val, str) and val != val.strip():
+                        clean = val.strip()
+                        coll.update_one({"_id": doc["_id"]}, {"$set": {ref_field: clean}})
+    except Exception as e:
+        print(f"[STARTUP WARNING] Could not sanitize whitespace: {e}", flush=True)
+
     import os
     for folder in ["pr", "po", "grn", "invoice"]:
         os.makedirs(os.path.join(app.config["UPLOAD_FOLDER"], folder), exist_ok=True)

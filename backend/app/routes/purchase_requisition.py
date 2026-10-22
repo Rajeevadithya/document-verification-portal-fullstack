@@ -22,7 +22,7 @@ from backend.app import mongo
 from datetime import datetime
 from backend.app.utils.helpers import (
     serialize_doc, success_response, error_response, allowed_file,
-    safe_float, parse_request_json
+    safe_float, parse_request_json, find_stage_doc, clean_reference
 )
 from backend.app.services.document_service import (
     save_document, change_document, delete_document, get_active_documents,
@@ -63,14 +63,14 @@ def _format_pr_response(pr_doc):
 
     def reorder_item(item):
         ordered = OrderedDict()
-        ordered["itemNumber"]          = item.get("itemNumber", "")
-        ordered["material"]            = item.get("material", "")
-        ordered["materialDescription"] = item.get("materialDescription", "")
-        ordered["plant"]               = item.get("plant", "")
+        ordered["itemNumber"]          = str(item.get("itemNumber", "")).strip()
+        ordered["material"]            = str(item.get("material", "")).strip()
+        ordered["materialDescription"] = str(item.get("materialDescription", "")).strip()
+        ordered["plant"]               = str(item.get("plant", "")).strip()
         ordered["quantity"]            = item.get("quantity", "")
         ordered["price"]               = item.get("price", "")
         ordered["amount"]              = item.get("amount", "")
-        ordered["purchaseOrganization"]= item.get("purchaseOrganization", "")
+        ordered["purchaseOrganization"]= str(item.get("purchaseOrganization", "")).strip()
         return ordered
 
     items = [reorder_item(i) for i in serialized.get("items", [])]
@@ -80,8 +80,8 @@ def _format_pr_response(pr_doc):
         total_value = _calc_total_value(serialized.get("items", []))
 
     data = OrderedDict()
-    data["purchaseRequisitionNumber"] = serialized.get("purchaseRequisitionNumber", "")
-    data["purchaseDocumentType"]      = serialized.get("purchaseDocumentType", "")
+    data["purchaseRequisitionNumber"] = str(serialized.get("purchaseRequisitionNumber", "")).strip()
+    data["purchaseDocumentType"]      = str(serialized.get("purchaseDocumentType", "")).strip()
     data["totalValue"]                = total_value
     data["items"]                     = items
     return data
@@ -223,18 +223,19 @@ def list_prs():
 # ── Get PR details ────────────────────────────────────────────────────────────
 @pr_bp.route("/<pr_number>", methods=["GET"])
 def get_pr(pr_number):
-    pr = mongo.db.purchase_requisitions.find_one({"purchaseRequisitionNumber": pr_number})
+    pr = find_stage_doc(mongo.db.purchase_requisitions, "purchaseRequisitionNumber", pr_number)
     if not pr:
-        return error_response(f"PR '{pr_number}' not found", 404)
+        return error_response(f"PR '{clean_reference(pr_number)}' not found", 404)
     return success_response(_format_pr_response(pr), "PR details fetched")
 
 
 # ── Upload multiple documents ─────────────────────────────────────────────────
 @pr_bp.route("/<pr_number>/documents/upload", methods=["POST"])
 def upload_pr_document(pr_number):
-    pr = mongo.db.purchase_requisitions.find_one({"purchaseRequisitionNumber": pr_number})
+    pr = find_stage_doc(mongo.db.purchase_requisitions, "purchaseRequisitionNumber", pr_number)
     if not pr:
-        return error_response(f"PR '{pr_number}' not found", 404)
+        return error_response(f"PR '{clean_reference(pr_number)}' not found", 404)
+    pr_number = str(pr.get("purchaseRequisitionNumber") or pr_number).strip()
 
     files = request.files.getlist("files")
     if not files:
@@ -308,9 +309,10 @@ def upload_pr_document(pr_number):
 # ── Change (replace) a document ───────────────────────────────────────────────
 @pr_bp.route("/<pr_number>/documents/<doc_id>/change", methods=["PUT"])
 def change_pr_document(pr_number, doc_id):
-    pr = mongo.db.purchase_requisitions.find_one({"purchaseRequisitionNumber": pr_number})
+    pr = find_stage_doc(mongo.db.purchase_requisitions, "purchaseRequisitionNumber", pr_number)
     if not pr:
-        return error_response(f"PR '{pr_number}' not found", 404)
+        return error_response(f"PR '{clean_reference(pr_number)}' not found", 404)
+    pr_number = str(pr.get("purchaseRequisitionNumber") or pr_number).strip()
     if "file" not in request.files:
         return error_response("No replacement file provided. Use key 'file'.", 400)
     f = request.files["file"]
@@ -328,9 +330,10 @@ def change_pr_document(pr_number, doc_id):
 # ── View active documents ─────────────────────────────────────────────────────
 @pr_bp.route("/<pr_number>/documents", methods=["GET"])
 def view_pr_documents(pr_number):
-    pr = mongo.db.purchase_requisitions.find_one({"purchaseRequisitionNumber": pr_number})
+    pr = find_stage_doc(mongo.db.purchase_requisitions, "purchaseRequisitionNumber", pr_number)
     if not pr:
-        return error_response(f"PR '{pr_number}' not found", 404)
+        return error_response(f"PR '{clean_reference(pr_number)}' not found", 404)
+    pr_number = str(pr.get("purchaseRequisitionNumber") or pr_number).strip()
     docs = get_active_documents("PR", pr_number)
     return success_response(
         {"purchaseRequisitionNumber": pr_number, "documents": docs, "count": len(docs)},
@@ -370,9 +373,10 @@ def download_pr_document(doc_id):
 # ── Audit logs – all docs under a PR ─────────────────────────────────────────
 @pr_bp.route("/<pr_number>/documents/audit-logs", methods=["GET"])
 def pr_document_audit_logs(pr_number):
-    pr = mongo.db.purchase_requisitions.find_one({"purchaseRequisitionNumber": pr_number})
+    pr = find_stage_doc(mongo.db.purchase_requisitions, "purchaseRequisitionNumber", pr_number)
     if not pr:
-        return error_response(f"PR '{pr_number}' not found", 404)
+        return error_response(f"PR '{clean_reference(pr_number)}' not found", 404)
+    pr_number = str(pr.get("purchaseRequisitionNumber") or pr_number).strip()
     logs = get_document_audit_logs(stage="PR", reference_number=pr_number)
     return success_response(
         {"purchaseRequisitionNumber": pr_number, "audit_logs": logs, "count": len(logs)},

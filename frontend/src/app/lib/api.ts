@@ -42,7 +42,7 @@ function toNumber(value: unknown, fallback = 0) {
 }
 
 function asString(value: unknown) {
-  return typeof value === "string" ? value : "";
+  return typeof value === "string" ? value.trim() : "";
 }
 
 function normalizeStageDocument(document: any): StageDocument {
@@ -333,51 +333,53 @@ export async function listStageRecords(stage: StageKey) {
 
 export async function getStageRecord(stage: StageKey, referenceNumber: string) {
   const route = ROUTE_MAP[stage];
+  const cleanRef = encodeURIComponent(decodeURIComponent(referenceNumber).trim());
   if (stage === "PR") {
-    const data = await request<any>(`/${route}/${referenceNumber}`);
+    const data = await request<any>(`/${route}/${cleanRef}`);
     return normalizePrRecord(data);
   }
   if (stage === "PO") {
-    const data = await request<any>(`/${route}/${referenceNumber}`);
+    const data = await request<any>(`/${route}/${cleanRef}`);
     return normalizePoRecord(data);
   }
   if (stage === "GRN") {
-    const data = await request<any>(`/${route}/${referenceNumber}`);
+    const data = await request<any>(`/${route}/${cleanRef}`);
     return normalizeGrnRecord(data);
   }
-  const data = await request<any>(`/${route}/${referenceNumber}`);
+  const data = await request<any>(`/${route}/${cleanRef}`);
   return normalizeInvoiceAggregate(data);
 }
 
 export async function listDocuments(stage: StageKey, referenceNumber: string) {
   const route = ROUTE_MAP[stage];
+  const cleanRef = encodeURIComponent(decodeURIComponent(referenceNumber).trim());
   if (stage === "PR") {
-    const data = await request<any>(`/${route}/${referenceNumber}/documents`);
+    const data = await request<any>(`/${route}/${cleanRef}/documents`);
     return {
-      pr_number: asString(data?.pr_number ?? data?.purchaseRequisitionNumber ?? referenceNumber),
+      pr_number: asString(data?.pr_number ?? data?.purchaseRequisitionNumber ?? cleanRef),
       documents: Array.isArray(data?.documents) ? data.documents.map(normalizeStageDocument) : [],
       count: toNumber(data?.count),
     };
   }
   if (stage === "PO") {
-    const data = await request<any>(`/${route}/${referenceNumber}/documents`);
+    const data = await request<any>(`/${route}/${cleanRef}/documents`);
     return {
-      po_number: asString(data?.po_number ?? data?.purchaseOrderNumber ?? referenceNumber),
+      po_number: asString(data?.po_number ?? data?.purchaseOrderNumber ?? cleanRef),
       document: data?.document ? normalizeStageDocument(data.document) : null,
       count: toNumber(data?.count),
     };
   }
   if (stage === "GRN") {
-    const data = await request<any>(`/${route}/${referenceNumber}/documents`);
+    const data = await request<any>(`/${route}/${cleanRef}/documents`);
     return {
-      grn_number: asString(data?.grn_number ?? data?.materialDocumentNumber ?? referenceNumber),
+      grn_number: asString(data?.grn_number ?? data?.materialDocumentNumber ?? cleanRef),
       document: data?.document ? normalizeStageDocument(data.document) : null,
       count: toNumber(data?.count),
     };
   }
-  const data = await request<any>(`/${route}/${referenceNumber}/documents`);
+  const data = await request<any>(`/${route}/${cleanRef}/documents`);
   return {
-    invoice_number: asString(data?.invoice_number ?? referenceNumber),
+    invoice_number: asString(data?.invoice_number ?? cleanRef),
     document: data?.document ? normalizeStageDocument(data.document) : null,
     count: toNumber(data?.count),
   };

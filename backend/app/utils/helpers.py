@@ -193,3 +193,39 @@ def parse_request_json(req):
             data = data["results"]
 
     return data
+
+def clean_reference(ref_val) -> str:
+    """URL-decode and strip any surrounding whitespace from a reference number."""
+    if not ref_val:
+        return ""
+    import urllib.parse
+    return urllib.parse.unquote(str(ref_val)).strip()
+
+def find_stage_doc(collection, key_field: str, ref_value: str):
+    """
+    Finds a document in collection by key_field, tolerating:
+    - URL percent-encoding (e.g. '10000071%20%20' -> '10000071')
+    - Leading/trailing whitespace (e.g. '10000071  ' from fixed-width SAP CHAR fields)
+    - Exact match, trimmed match, or whitespace-padded regex match
+    """
+    clean = clean_reference(ref_value)
+    if not clean:
+        return None
+
+    # 1. Exact trimmed match
+    doc = collection.find_one({key_field: clean})
+    if doc:
+        return doc
+
+    # 2. Raw unquoted value if different
+    import urllib.parse
+    unquoted = urllib.parse.unquote(str(ref_value or ""))
+    if unquoted != clean:
+        doc = collection.find_one({key_field: unquoted})
+        if doc:
+            return doc
+
+    # 3. Regex matching any whitespace-padded variation
+    import re
+    pattern = re.compile(f"^\\s*{re.escape(clean)}\\s*$", re.IGNORECASE)
+    return collection.find_one({key_field: pattern})

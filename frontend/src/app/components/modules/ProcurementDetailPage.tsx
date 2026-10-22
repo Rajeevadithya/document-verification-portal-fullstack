@@ -515,7 +515,7 @@ export function ProcurementDetailPage() {
   const pathSegment = location.pathname.split("/").filter(Boolean)[1]?.toUpperCase() as Exclude<FrontendStageKey, "INV"> | undefined;
   const frontendStage: Exclude<FrontendStageKey, "INV"> =
     pathSegment === "PO" ? "PO" : pathSegment === "GRN" ? "GRN" : "PR";
-  const docRef = refParam ?? "";
+  const docRef = (refParam ? decodeURIComponent(refParam) : "").trim();
   const subTab = (searchParams.get("action") as "upload" | "change" | "view" | null) ?? "view";
   const stageKey: StageKey = getStageFromFrontend(frontendStage);
   const meta = STAGE_META[frontendStage] ?? STAGE_META.PR;

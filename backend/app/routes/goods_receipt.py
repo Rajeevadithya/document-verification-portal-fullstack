@@ -22,7 +22,7 @@ from datetime import datetime
 from backend.app import mongo
 from backend.app.utils.helpers import (
     serialize_doc, success_response, error_response, allowed_file,
-    safe_float, parse_request_json
+    safe_float, parse_request_json, find_stage_doc, clean_reference
 )
 from backend.app.services.document_service import (
     save_document, change_document, delete_document, get_active_documents, get_document_by_id,
@@ -66,29 +66,29 @@ def _format_grn_response(grn_doc):
 
     def reorder_item(item):
         ordered = OrderedDict()
-        ordered["itemNumber"]          = item.get("itemNumber", "")
-        ordered["material"]            = item.get("material", "")
-        ordered["materialDescription"] = item.get("materialDescription", "")
+        ordered["itemNumber"]          = str(item.get("itemNumber", "")).strip()
+        ordered["material"]            = str(item.get("material", "")).strip()
+        ordered["materialDescription"] = str(item.get("materialDescription", "")).strip()
         ordered["quantity"]            = item.get("quantity", "")
         ordered["price"]               = item.get("price", "")
         ordered["amount"]              = item.get("amount", "")
-        ordered["plant"]               = item.get("plant", "")
-        ordered["purchaseOrder"]       = item.get("purchaseOrder", "")
+        ordered["plant"]               = str(item.get("plant", "")).strip()
+        ordered["purchaseOrder"]       = str(item.get("purchaseOrder", "")).strip()
         return ordered
 
     material_document_number = (
-        serialized.get("materialDocumentNumber") or serialized.get("materialDocumentNumber", "")
+        str(serialized.get("materialDocumentNumber") or "").strip()
     )
-    material_document_year = (
+    material_document_year = str(
         serialized.get("materialDocumentYear")
         or _extract_year(serialized.get("documentDate", ""))
-    )
+    ).strip()
 
     data = OrderedDict()
     data["materialDocumentNumber"] = material_document_number
     data["materialDocumentYear"]   = material_document_year
-    data["documentDate"]           = serialized.get("documentDate", "")
-    data["postingDate"]            = serialized.get("postingDate", "")
+    data["documentDate"]           = str(serialized.get("documentDate", "")).strip()
+    data["postingDate"]            = str(serialized.get("postingDate", "")).strip()
     data["items"]                  = [reorder_item(i) for i in serialized.get("items", [])]
     return data
 
@@ -243,27 +243,38 @@ def list_grns():
 # ── Get GRN details ───────────────────────────────────────────────────────────
 @grn_bp.route("/<grn_number>", methods=["GET"])
 def get_grn(grn_number):
-    grn = mongo.db.goods_receipts.find_one({"materialDocumentNumber": grn_number})
+    grn = find_stage_doc(mongo.db.goods_receipts, "materialDocumentNumber", grn_number)
     if not grn:
-        return error_response(f"GRN '{grn_number}' not found", 404)
+        return error_response(f"GRN '{clean_reference(grn_number)}' not found", 404)
     return success_response(_format_grn_response(grn), "GRN details fetched")
 
 
 # ── Get GRN by PO ─────────────────────────────────────────────────────────────
 @grn_bp.route("/by-po/<po_number>", methods=["GET"])
 def get_grn_by_po(po_number):
-    grn = mongo.db.goods_receipts.find_one({"items.purchase_order": po_number})
+    clean_po = clean_reference(po_number)
+    import re
+    pattern = re.compile(f"^\\s*{re.escape(clean_po)}\\s*$", re.IGNORECASE)
+    grn = mongo.db.goods_receipts.find_one({
+        "$or": [
+            {"items.purchaseOrder": pattern},
+            {"items.purchase_order": pattern},
+            {"purchaseOrderNumber": pattern},
+            {"purchaseOrder": pattern},
+        ]
+    })
     if not grn:
-        return error_response(f"No GRN found for PO '{po_number}'", 404)
+        return error_response(f"No GRN found for PO '{clean_po}'", 404)
     return success_response(_format_grn_response(grn), "GRN fetched for PO")
 
 
 # ── Upload GRN document (single) ──────────────────────────────────────────────
 @grn_bp.route("/<grn_number>/documents/upload", methods=["POST"])
 def upload_grn_document(grn_number):
-    grn = mongo.db.goods_receipts.find_one({"materialDocumentNumber": grn_number})
+    grn = find_stage_doc(mongo.db.goods_receipts, "materialDocumentNumber", grn_number)
     if not grn:
-        return error_response(f"GRN '{grn_number}' not found", 404)
+        return error_response(f"GRN '{clean_reference(grn_number)}' not found", 404)
+    grn_number = str(grn.get("materialDocumentNumber") or grn_number).strip()
 
     existing = get_active_documents("GRN", grn_number)
     if existing:
@@ -294,9 +305,10 @@ def upload_grn_document(grn_number):
 # ── Change (replace) GRN document ────────────────────────────────────────────
 @grn_bp.route("/<grn_number>/documents/<doc_id>/change", methods=["PUT"])
 def change_grn_document(grn_number, doc_id):
-    grn = mongo.db.goods_receipts.find_one({"materialDocumentNumber": grn_number})
+    grn = find_stage_doc(mongo.db.goods_receipts, "materialDocumentNumber", grn_number)
     if not grn:
-        return error_response(f"GRN '{grn_number}' not found", 404)
+        return error_response(f"GRN '{clean_reference(grn_number)}' not found", 404)
+    grn_number = str(grn.get("materialDocumentNumber") or grn_number).strip()
     if "file" not in request.files:
         return error_response("No replacement file provided. Use key 'file'.", 400)
     f = request.files["file"]
@@ -316,9 +328,10 @@ def change_grn_document(grn_number, doc_id):
 # ── View active GRN documents ─────────────────────────────────────────────────
 @grn_bp.route("/<grn_number>/documents", methods=["GET"])
 def view_grn_documents(grn_number):
-    grn = mongo.db.goods_receipts.find_one({"materialDocumentNumber": grn_number})
+    grn = find_stage_doc(mongo.db.goods_receipts, "materialDocumentNumber", grn_number)
     if not grn:
-        return error_response(f"GRN '{grn_number}' not found", 404)
+        return error_response(f"GRN '{clean_reference(grn_number)}' not found", 404)
+    grn_number = str(grn.get("materialDocumentNumber") or grn_number).strip()
     docs = get_active_documents("GRN", grn_number)
     return success_response(
         {"materialDocumentNumber": grn_number, "document": docs[0] if docs else None, "count": len(docs)},

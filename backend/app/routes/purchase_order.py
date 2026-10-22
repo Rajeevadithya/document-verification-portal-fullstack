@@ -23,7 +23,7 @@ from flask import Blueprint, request, send_file
 from backend.app import mongo
 from backend.app.utils.helpers import (
     serialize_doc, success_response, error_response, allowed_file,
-    safe_float, parse_request_json
+    safe_float, parse_request_json, find_stage_doc, clean_reference
 )
 from backend.app.services.document_service import (
     save_document, change_document, delete_document, get_active_documents, get_document_by_id,
@@ -68,13 +68,13 @@ def _format_po_response(po_doc):
 
     def reorder_item(item):
         ordered = OrderedDict()
-        ordered["itemNumber"]          = item.get("itemNumber", "")
-        ordered["material"]            = item.get("material", "")
-        ordered["materialDescription"] = item.get("materialDescription", "")
+        ordered["itemNumber"]          = str(item.get("itemNumber", "")).strip()
+        ordered["material"]            = str(item.get("material", "")).strip()
+        ordered["materialDescription"] = str(item.get("materialDescription", "")).strip()
         ordered["quantity"]            = item.get("quantity", "")
         ordered["price"]               = item.get("price", "")
         ordered["amount"]              = item.get("amount", "")
-        ordered["plant"]               = item.get("plant", "")
+        ordered["plant"]               = str(item.get("plant", "")).strip()
         return ordered
 
     items = [reorder_item(i) for i in serialized.get("items", [])]
@@ -84,14 +84,14 @@ def _format_po_response(po_doc):
         net_order_value = _calc_net_order_value(serialized.get("items", []))
 
     data = OrderedDict()
-    data["purchaseOrderNumber"]       = serialized.get("purchaseOrderNumber", "")
-    data["purchaseDocumentType"]      = serialized.get("purchaseDocumentType", "")
-    data["purchasingGroup"]           = serialized.get("purchasingGroup", "")
-    data["companyCode"]               = serialized.get("companyCode", "")
-    data["purchaseOrderDate"]         = serialized.get("purchaseOrderDate", "")
+    data["purchaseOrderNumber"]       = str(serialized.get("purchaseOrderNumber", "")).strip()
+    data["purchaseDocumentType"]      = str(serialized.get("purchaseDocumentType", "")).strip()
+    data["purchasingGroup"]           = str(serialized.get("purchasingGroup", "")).strip()
+    data["companyCode"]               = str(serialized.get("companyCode", "")).strip()
+    data["purchaseOrderDate"]         = str(serialized.get("purchaseOrderDate", "")).strip()
     data["netOrderValue"]             = net_order_value
-    data["purchaseOrganization"]      = serialized.get("purchaseOrganization", "")
-    data["purchaseRequisitionNumber"] = serialized.get("purchaseRequisitionNumber", "")
+    data["purchaseOrganization"]      = str(serialized.get("purchaseOrganization", "")).strip()
+    data["purchaseRequisitionNumber"] = str(serialized.get("purchaseRequisitionNumber", "")).strip()
     data["items"]                     = items
     return data
 
@@ -254,32 +254,28 @@ def list_pos():
 # ── Get PO details ────────────────────────────────────────────────────────────
 @po_bp.route("/<po_number>", methods=["GET"])
 def get_po(po_number):
-    po = mongo.db.purchase_orders.find_one({"purchaseOrderNumber": po_number})
+    po = find_stage_doc(mongo.db.purchase_orders, "purchaseOrderNumber", po_number)
     if not po:
-        return error_response(f"PO '{po_number}' not found", 404)
+        return error_response(f"PO '{clean_reference(po_number)}' not found", 404)
     return success_response(_format_po_response(po), "PO details fetched")
 
 
 # ── Get PO by PR ──────────────────────────────────────────────────────────────
 @po_bp.route("/by-pr/<pr_number>", methods=["GET"])
 def get_po_by_pr(pr_number):
-    po = mongo.db.purchase_orders.find_one({
-        "$or": [
-            {"purchaseRequisitionNumber": pr_number},
-            {"purchaseRequisitionNumber": pr_number}
-        ]
-    })
+    po = find_stage_doc(mongo.db.purchase_orders, "purchaseRequisitionNumber", pr_number)
     if not po:
-        return error_response(f"No PO found for PR '{pr_number}'", 404)
+        return error_response(f"No PO found for PR '{clean_reference(pr_number)}'", 404)
     return success_response(_format_po_response(po), "PO fetched for PR")
 
 
 # ── Upload PO document (single) ───────────────────────────────────────────────
 @po_bp.route("/<po_number>/documents/upload", methods=["POST"])
 def upload_po_document(po_number):
-    po = mongo.db.purchase_orders.find_one({"purchaseOrderNumber": po_number})
+    po = find_stage_doc(mongo.db.purchase_orders, "purchaseOrderNumber", po_number)
     if not po:
-        return error_response(f"PO '{po_number}' not found", 404)
+        return error_response(f"PO '{clean_reference(po_number)}' not found", 404)
+    po_number = str(po.get("purchaseOrderNumber") or po_number).strip()
 
     existing = get_active_documents("PO", po_number)
     if existing:
@@ -293,7 +289,7 @@ def upload_po_document(po_number):
     if f.filename == "" or not allowed_file(f.filename):
         return error_response("Invalid or unsupported file", 400)
 
-    linked_pr = po.get("purchaseRequisitionNumber") or po.get("purchaseRequisitionNumber")
+    linked_pr = str(po.get("purchaseRequisitionNumber") or "").strip()
     try:
         doc = save_document(f, "PO", po_number, linked_pr_number=linked_pr)
     except (OCRValidationError, ValueError) as e:
@@ -311,16 +307,17 @@ def upload_po_document(po_number):
 # ── Change (replace) PO document ─────────────────────────────────────────────
 @po_bp.route("/<po_number>/documents/<doc_id>/change", methods=["PUT"])
 def change_po_document(po_number, doc_id):
-    po = mongo.db.purchase_orders.find_one({"purchaseOrderNumber": po_number})
+    po = find_stage_doc(mongo.db.purchase_orders, "purchaseOrderNumber", po_number)
     if not po:
-        return error_response(f"PO '{po_number}' not found", 404)
+        return error_response(f"PO '{clean_reference(po_number)}' not found", 404)
+    po_number = str(po.get("purchaseOrderNumber") or po_number).strip()
     if "file" not in request.files:
         return error_response("No replacement file provided. Use key 'file'.", 400)
     f = request.files["file"]
     if f.filename == "" or not allowed_file(f.filename):
         return error_response("Invalid file", 400)
 
-    linked_pr = po.get("purchaseRequisitionNumber") or po.get("purchaseRequisitionNumber")
+    linked_pr = str(po.get("purchaseRequisitionNumber") or "").strip()
     try:
         updated = change_document(doc_id, f, "PO", po_number, linked_pr_number=linked_pr)
     except (OCRValidationError, ValueError) as e:
@@ -334,9 +331,10 @@ def change_po_document(po_number, doc_id):
 # ── View active PO documents ──────────────────────────────────────────────────
 @po_bp.route("/<po_number>/documents", methods=["GET"])
 def view_po_documents(po_number):
-    po = mongo.db.purchase_orders.find_one({"purchaseOrderNumber": po_number})
+    po = find_stage_doc(mongo.db.purchase_orders, "purchaseOrderNumber", po_number)
     if not po:
-        return error_response(f"PO '{po_number}' not found", 404)
+        return error_response(f"PO '{clean_reference(po_number)}' not found", 404)
+    po_number = str(po.get("purchaseOrderNumber") or po_number).strip()
     docs = get_active_documents("PO", po_number)
     return success_response(
         {"purchaseOrderNumber": po_number, "document": docs[0] if docs else None, "count": len(docs)},
