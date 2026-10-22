@@ -128,15 +128,15 @@ export function Layout() {
 
           <div className="relative" ref={profileRef}>
             <button onClick={() => { setProfileOpen((current) => !current); setNotifOpen(false); }} className="flex items-center gap-2 rounded px-2 py-1 hover:bg-white/10 transition-colors">
-              <div className="rounded-full flex items-center justify-center text-white" style={{ width: "28px", height: "28px", backgroundColor: "#0070F2", fontSize: "11px", fontWeight: "600" }}>JD</div>
-              <span className="text-white" style={{ fontSize: "12px" }}>John Doe</span>
+              <div className="rounded-full flex items-center justify-center text-white" style={{ width: "28px", height: "28px", backgroundColor: "#0070F2", fontSize: "11px", fontWeight: "600" }}>SM</div>
+              <span className="text-white" style={{ fontSize: "12px" }}>Sree Reddy Malireddy</span>
               <ChevronDown size={12} color="#ffffff" />
             </button>
             {profileOpen && (
-              <div className="absolute right-0 bg-white shadow-lg border z-50" style={{ top: "40px", width: "180px", borderColor: "#d9d9d9" }}>
+              <div className="absolute right-0 bg-white shadow-lg border z-50" style={{ top: "40px", minWidth: "210px", borderColor: "#d9d9d9" }}>
                 <div className="px-3 py-2 border-b" style={{ borderColor: "#eeeeee", backgroundColor: "#f5f5f5" }}>
-                  <div style={{ fontSize: "12px", fontWeight: "600", color: "#32363a" }}>John Doe</div>
-                  <div style={{ fontSize: "11px", color: "#8a8b8c" }}>john.doe@company.com</div>
+                  <div style={{ fontSize: "12px", fontWeight: "600", color: "#32363a" }}>Sree Reddy Malireddy</div>
+                  <div style={{ fontSize: "11px", color: "#8a8b8c" }}>msreereddy@midwest.in</div>
                 </div>
                 {[{ icon: User, label: "Profile" }, { icon: Settings, label: "Settings" }, { icon: LogOut, label: "Log Out" }].map((item) => (
                   <button key={item.label} className="flex items-center gap-2 w-full px-3 py-2 hover:bg-blue-50 text-left" style={{ fontSize: "12px", color: "#32363a" }}>

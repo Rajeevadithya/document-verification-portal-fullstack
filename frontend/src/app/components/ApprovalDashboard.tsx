@@ -18,10 +18,10 @@ type ApprovalRecord = {
 const INITIAL_DATA: ApprovalRecord[] = [
   { id: "1", docNumber: "PO2001", type: "Purchase Order", submittedBy: "Ravi Kumar", date: "2025-03-20", amount: "₹73,000", priority: "High", status: "Pending", remarks: "" },
   { id: "2", docNumber: "PO2002", type: "Purchase Order", submittedBy: "Jane Smith", date: "2025-03-21", amount: "₹62,500", priority: "High", status: "Pending", remarks: "" },
-  { id: "3", docNumber: "PR1001", type: "Purchase Requisition", submittedBy: "John Doe", date: "2025-03-18", amount: "₹45,000", priority: "Medium", status: "Pending", remarks: "" },
+  { id: "3", docNumber: "PR1001", type: "Purchase Requisition", submittedBy: "Sree Reddy Malireddy", date: "2025-03-18", amount: "₹45,000", priority: "Medium", status: "Pending", remarks: "" },
   { id: "4", docNumber: "PR1002", type: "Purchase Requisition", submittedBy: "Priya Nair", date: "2025-03-19", amount: "₹32,000", priority: "High", status: "Pending", remarks: "" },
   { id: "5", docNumber: "GR3001", type: "Goods Receipt Note", submittedBy: "Ravi Kumar", date: "2025-03-22", amount: "₹73,000", priority: "Medium", status: "Approved", remarks: "Verified and approved" },
-  { id: "6", docNumber: "PR1003", type: "Purchase Requisition", submittedBy: "John Doe", date: "2025-03-17", amount: "₹28,000", priority: "Low", status: "Approved", remarks: "Standard procurement" },
+  { id: "6", docNumber: "PR1003", type: "Purchase Requisition", submittedBy: "Sree Reddy Malireddy", date: "2025-03-17", amount: "₹28,000", priority: "Low", status: "Approved", remarks: "Standard procurement" },
   { id: "7", docNumber: "INV4001", type: "Invoice Verification", submittedBy: "Priya Nair", date: "2025-03-23", amount: "₹1,00,000", priority: "High", status: "Pending", remarks: "" },
   { id: "8", docNumber: "GR3002", type: "Goods Receipt Note", submittedBy: "Jane Smith", date: "2025-03-24", amount: "₹37,500", priority: "Medium", status: "Rejected", remarks: "Partial delivery - quantity mismatch" },
 ];
