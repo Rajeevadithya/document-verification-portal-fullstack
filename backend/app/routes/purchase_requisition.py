@@ -25,7 +25,7 @@ from backend.app.utils.helpers import (
 )
 from backend.app.services.document_service import (
     save_document, change_document, delete_document, get_active_documents,
-    get_document_by_id, get_document_audit_logs
+    get_document_by_id, get_document_audit_logs, OCRValidationError
 )
 
 pr_bp = Blueprint("purchase_requisition", __name__)
@@ -241,6 +241,8 @@ def upload_pr_document(pr_number):
                 "uploaded_by":          doc["uploaded_by"],
                 "uploaded_at":          doc["uploaded_at"],
             })
+        except OCRValidationError as e:
+            errors.append({"filename": f.filename, "reason": "OCR_VALIDATION_FAILED", "error": str(e)})
         except ValueError as e:
             errors.append({"filename": f.filename, "reason": "DUPLICATE_FILE", "error": str(e)})
         except Exception as e:
@@ -253,7 +255,8 @@ def upload_pr_document(pr_number):
         )
 
     if not uploaded:
-        return error_response("No files were uploaded successfully", 400, errors)
+        first_err = errors[0].get("error") if errors else None
+        return error_response(first_err or "No files were uploaded successfully", 400, errors)
 
     return success_response(
         {"purchaseRequisitionNumber": pr_number, "uploaded": uploaded,
@@ -276,8 +279,8 @@ def change_pr_document(pr_number, doc_id):
         return error_response("Invalid or unsupported file", 400)
     try:
         updated_doc = change_document(doc_id, f, "PR", pr_number)
-    except ValueError as e:
-        return error_response(str(e), 409)
+    except (OCRValidationError, ValueError) as e:
+        return error_response(str(e), 400)
     if not updated_doc:
         return error_response(f"Document '{doc_id}' not found", 404)
     return success_response(updated_doc, "Document replaced successfully")

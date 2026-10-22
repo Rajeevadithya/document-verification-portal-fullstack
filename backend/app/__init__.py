@@ -40,4 +40,15 @@ def create_app():
     def health():
         return {"status": "ok", "service": "SAP Procurement Portal API"}
 
+    from .services.document_service import OCRValidationError
+    from .utils.helpers import error_response
+
+    @app.errorhandler(OCRValidationError)
+    def handle_ocr_validation_error(exc):
+        return error_response(str(exc), 400)
+
+    @app.errorhandler(ValueError)
+    def handle_value_error(exc):
+        return error_response(str(exc), 400)
+
     return app

@@ -84,14 +84,21 @@ export function ModuleFooterAlerts({
   idleMessage: string;
 }) {
   const alerts: FooterAlert[] = [];
-  const isOcrValidationError = Boolean(error && error.toLowerCase().includes("ocr validation"));
+  const isOcrValidationError = Boolean(
+    error && (
+      error.toLowerCase().includes("ocr") ||
+      error.toLowerCase().includes("doesn't match") ||
+      error.toLowerCase().includes("does not match") ||
+      error.toLowerCase().includes("mismatch")
+    )
+  );
 
   if (error) {
     alerts.push({
       key: "error",
-      title: isOcrValidationError ? "OCR validation blocked upload" : "Action could not be completed",
+      title: isOcrValidationError ? "Document Mismatch" : "Upload Failed",
       description: error,
-      tone: isOcrValidationError ? "warning" : "error",
+      tone: "error",
     });
   }
 

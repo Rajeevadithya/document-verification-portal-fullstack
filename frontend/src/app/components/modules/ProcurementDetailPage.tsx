@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams, useSearchParams } from "react-router";
 import {
+  AlertCircle,
   ArrowLeft,
   Download,
   Edit,
@@ -266,6 +267,7 @@ function DocumentsPanel({
   docs,
   docsLoading,
   canModify,
+  error,
   onReplace,
   onDelete,
 }: {
@@ -274,6 +276,7 @@ function DocumentsPanel({
   docs: StageDocument[];
   docsLoading: boolean;
   canModify: boolean;
+  error?: string | null;
   onReplace: (ref: string, docId: string) => void;
   onDelete: (docId: string) => Promise<void>;
 }) {
@@ -292,6 +295,13 @@ function DocumentsPanel({
           Uploaded Documents ({docsLoading ? "…" : docs.length})
         </span>
       </div>
+
+      {error && (
+        <div style={{ margin: "14px 24px 0", padding: "10px 14px", backgroundColor: "#FBEAEA", border: "1px solid #F0B2B2", borderRadius: "8px", fontSize: "12px", color: "#BB0000", fontWeight: "600", display: "flex", alignItems: "center", gap: "8px" }}>
+          <AlertCircle size={15} color="#BB0000" style={{ flexShrink: 0 }} />
+          <span>{error}</span>
+        </div>
+      )}
 
       {docsLoading ? (
         <div style={{ padding: "20px 24px", fontSize: "13px", color: "#6A6D70", display: "flex", alignItems: "center", gap: "8px" }}>
@@ -372,11 +382,13 @@ function UploadPanel({
   reference,
   multiUpload,
   uploading,
+  error,
   onUpload,
 }: {
   reference: string;
   multiUpload: boolean;
   uploading: boolean;
+  error?: string | null;
   onUpload: (files: File[]) => Promise<void>;
 }) {
   const [files, setFiles] = useState<File[]>([]);
@@ -460,6 +472,12 @@ function UploadPanel({
           Upload
         </button>
       </div>
+      {error && (
+        <div style={{ marginTop: "14px", padding: "10px 14px", backgroundColor: "#FBEAEA", border: "1px solid #F0B2B2", borderRadius: "8px", fontSize: "12px", color: "#BB0000", fontWeight: "600", display: "flex", alignItems: "center", gap: "8px" }}>
+          <AlertCircle size={15} color="#BB0000" style={{ flexShrink: 0 }} />
+          <span>{error}</span>
+        </div>
+      )}
     </div>
   );
 }
@@ -471,8 +489,9 @@ function AlertBar({ error, info }: { error?: string | null; info?: string | null
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
       {error && (
-        <div style={{ padding: "12px 16px", backgroundColor: "#FBEAEA", border: "1px solid #F0B2B2", borderRadius: "10px", fontSize: "13px", color: "#BB0000", fontWeight: "500" }}>
-          {error}
+        <div style={{ padding: "12px 16px", backgroundColor: "#FBEAEA", border: "1px solid #F0B2B2", borderRadius: "10px", fontSize: "13px", color: "#BB0000", fontWeight: "600", display: "flex", alignItems: "center", gap: "8px" }}>
+          <AlertCircle size={16} color="#BB0000" style={{ flexShrink: 0 }} />
+          <span>{error}</span>
         </div>
       )}
       {info && (
@@ -774,6 +793,7 @@ export function ProcurementDetailPage() {
                   docs={docs}
                   docsLoading={docsLoading}
                   canModify={subTab === "change"}
+                  error={error}
                   onReplace={handleReplace}
                   onDelete={handleDelete}
                 />
@@ -783,6 +803,7 @@ export function ProcurementDetailPage() {
                   reference={docRef}
                   multiUpload={multiUpload}
                   uploading={uploading}
+                  error={error}
                   onUpload={handleUpload}
                 />
               )}

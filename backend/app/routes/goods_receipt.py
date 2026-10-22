@@ -24,7 +24,8 @@ from backend.app.utils.helpers import (
     serialize_doc, success_response, error_response, allowed_file
 )
 from backend.app.services.document_service import (
-    save_document, change_document, delete_document, get_active_documents, get_document_by_id
+    save_document, change_document, delete_document, get_active_documents, get_document_by_id,
+    OCRValidationError
 )
 
 grn_bp = Blueprint("goods_receipt", __name__)
@@ -225,7 +226,10 @@ def upload_grn_document(grn_number):
     if f.filename == "" or not allowed_file(f.filename):
         return error_response("Invalid or unsupported file", 400)
 
-    doc = save_document(f, "GRN", grn_number)
+    try:
+        doc = save_document(f, "GRN", grn_number)
+    except (OCRValidationError, ValueError) as e:
+        return error_response(str(e), 400)
 
     if doc:
         mongo.db.notifications.update_many(
@@ -248,7 +252,11 @@ def change_grn_document(grn_number, doc_id):
     if f.filename == "" or not allowed_file(f.filename):
         return error_response("Invalid file", 400)
 
-    updated = change_document(doc_id, f, "GRN", grn_number)
+    try:
+        updated = change_document(doc_id, f, "GRN", grn_number)
+    except (OCRValidationError, ValueError) as e:
+        return error_response(str(e), 400)
+
     if not updated:
         return error_response(f"Document '{doc_id}' not found", 404)
     return success_response(updated, "GRN document replaced successfully")

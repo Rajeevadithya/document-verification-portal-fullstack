@@ -219,7 +219,15 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   }
 
   if (!response.ok || !payload?.success) {
-    throw new Error(payload?.message || `Request failed with status ${response.status}`);
+    let errorMsg = payload?.message;
+    if (Array.isArray(payload?.errors) && payload.errors.length > 0) {
+      const firstErr: any = payload.errors[0];
+      const detail = firstErr?.error || firstErr?.message || firstErr?.reason;
+      if (detail && (!errorMsg || errorMsg === "No files were uploaded successfully" || errorMsg === "Error")) {
+        errorMsg = detail;
+      }
+    }
+    throw new Error(errorMsg || `Request failed with status ${response.status}`);
   }
 
   return payload.data;

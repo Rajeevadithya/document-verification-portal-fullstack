@@ -25,7 +25,8 @@ from backend.app.utils.helpers import (
     serialize_doc, success_response, error_response, allowed_file
 )
 from backend.app.services.document_service import (
-    save_document, change_document, delete_document, get_active_documents, get_document_by_id
+    save_document, change_document, delete_document, get_active_documents, get_document_by_id,
+    OCRValidationError
 )
 
 po_bp = Blueprint("purchaseOrder", __name__)
@@ -233,7 +234,10 @@ def upload_po_document(po_number):
         return error_response("Invalid or unsupported file", 400)
 
     linked_pr = po.get("purchaseRequisitionNumber") or po.get("purchaseRequisitionNumber")
-    doc = save_document(f, "PO", po_number, linked_pr_number=linked_pr)
+    try:
+        doc = save_document(f, "PO", po_number, linked_pr_number=linked_pr)
+    except (OCRValidationError, ValueError) as e:
+        return error_response(str(e), 400)
 
     if doc:
         mongo.db.notifications.update_many(
@@ -257,7 +261,11 @@ def change_po_document(po_number, doc_id):
         return error_response("Invalid file", 400)
 
     linked_pr = po.get("purchaseRequisitionNumber") or po.get("purchaseRequisitionNumber")
-    updated = change_document(doc_id, f, "PO", po_number, linked_pr_number=linked_pr)
+    try:
+        updated = change_document(doc_id, f, "PO", po_number, linked_pr_number=linked_pr)
+    except (OCRValidationError, ValueError) as e:
+        return error_response(str(e), 400)
+
     if not updated:
         return error_response(f"Document '{doc_id}' not found", 404)
     return success_response(updated, "PO document replaced successfully")

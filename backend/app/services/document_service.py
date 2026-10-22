@@ -52,40 +52,38 @@ def is_duplicate(file_hash: str, stage: str, reference_number: str) -> dict | No
 def _build_ocr_failure_message(stage: str, reference_number: str, rejection_detail: dict | None, ocr_result: dict) -> str:
     stage_upper = stage.upper()
     reasons = rejection_detail.get("failure_reasons", []) if rejection_detail else []
-    simple_reasons: list[str] = []
 
-    for reason in reasons:
-        check = (reason.get("check") or "").lower()
-        found = reason.get("found") or ""
+    # Check for reference number mismatch (primary check)
+    has_ref_mismatch = any("reference number" in (r.get("check") or "").lower() for r in reasons)
+    if has_ref_mismatch:
+        if reference_number:
+            return f"Uploaded document doesn't match {stage_upper} {reference_number}."
+        return "Uploaded document doesn't match."
 
-        if "reference number presence" in check:
-            if stage_upper == "PR":
-                simple_reasons.append("PR number doesn't match the uploaded document.")
-            elif stage_upper == "PO":
-                simple_reasons.append("PO number doesn't match the uploaded document.")
-            elif stage_upper == "GRN":
-                simple_reasons.append("GRN number doesn't match the uploaded document.")
-            else:
-                simple_reasons.append("Document number doesn't match the uploaded document.")
-        elif "cross-reference validation" in check:
-            simple_reasons.append("Linked PR number is missing from the PO document.")
-        elif "document type detection" in check:
-            if found and found != "Undetected":
-                simple_reasons.append(f"Uploaded file looks like a {found} document, not a {stage_upper} document.")
-            else:
-                simple_reasons.append("OCR could not clearly identify the document type.")
+    # Check for cross-reference mismatch
+    has_cross_ref = any("cross-reference" in (r.get("check") or "").lower() for r in reasons)
+    if has_cross_ref:
+        return "Linked PR number not found in uploaded document."
 
-    if not simple_reasons and ocr_result.get("issues"):
-        for issue in ocr_result["issues"][:2]:
+    # Check for wrong document type detected
+    doc_type_reason = next((r for r in reasons if "document type" in (r.get("check") or "").lower()), None)
+    if doc_type_reason:
+        found = doc_type_reason.get("found")
+        if found and found != "Undetected":
+            return f"Uploaded document looks like {found}, not {stage_upper}."
+        if reference_number:
+            return f"Uploaded document doesn't match {stage_upper} {reference_number}."
+        return "Uploaded document doesn't match."
+
+    if ocr_result.get("issues"):
+        for issue in ocr_result["issues"]:
             issue_text = str(issue).strip()
             if issue_text:
-                simple_reasons.append(issue_text)
+                return issue_text
 
-    if not simple_reasons:
-        simple_reasons.append(f"{stage_upper} document validation failed.")
-
-    deduped_reasons = list(dict.fromkeys(simple_reasons))
-    return f"Upload blocked. {' '.join(deduped_reasons[:3])}"
+    if reference_number:
+        return f"Uploaded document doesn't match {stage_upper} {reference_number}."
+    return "Uploaded document doesn't match."
 
 
 def _should_block_for_ocr(stage: str, ocr_result: dict) -> bool:

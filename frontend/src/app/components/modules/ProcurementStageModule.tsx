@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import {
+  AlertCircle,
   Download,
   Edit,
   Eye,
@@ -354,10 +355,11 @@ function ItemsSubTable({ record, stage }: { record: ProcurementRecord; stage: Ex
 // ─── Documents panel ────────────────────────────────────────────────────────────
 
 function DocumentsPanel({
-  reference, stage, docs, docsLoading, canModify, onReplace, onDelete,
+  reference, stage, docs, docsLoading, canModify, error, onReplace, onDelete,
 }: {
   reference: string; stage: StageKey; docs: StageDocument[];
   docsLoading: boolean; canModify: boolean;
+  error?: string | null;
   onReplace: (ref: string, docId: string) => void;
   onDelete: (docId: string) => Promise<void>;
 }) {
@@ -370,6 +372,12 @@ function DocumentsPanel({
           Uploaded Documents ({docsLoading ? "…" : docs.length})
         </span>
       </div>
+      {error && (
+        <div style={{ margin: "8px 14px 0", padding: "8px 12px", backgroundColor: "#FBEAEA", border: "1px solid #F0B2B2", borderRadius: "6px", fontSize: "11px", color: "#BB0000", fontWeight: "600", display: "flex", alignItems: "center", gap: "6px" }}>
+          <AlertCircle size={14} color="#BB0000" style={{ flexShrink: 0 }} />
+          <span>{error}</span>
+        </div>
+      )}
       {docsLoading ? (
         <div style={{ padding: "14px 16px", fontSize: "12px", color: "#6A6D70", display: "flex", alignItems: "center", gap: "6px" }}>
           <LoaderCircle size={14} className="animate-spin" /> Loading documents…
@@ -430,9 +438,10 @@ function DocumentsPanel({
 // ─── Upload panel ───────────────────────────────────────────────────────────────
 
 function UploadPanel({
-  reference, multiUpload, uploading, onUpload,
+  reference, multiUpload, uploading, error, onUpload,
 }: {
   reference: string; multiUpload: boolean; uploading: boolean;
+  error?: string | null;
   onUpload: (files: File[]) => Promise<void>;
 }) {
   const [files, setFiles] = useState<File[]>([]);
@@ -471,6 +480,12 @@ function UploadPanel({
           Upload
         </button>
       </div>
+      {error && (
+        <div style={{ marginTop: "10px", padding: "8px 12px", backgroundColor: "#FBEAEA", border: "1px solid #F0B2B2", borderRadius: "6px", fontSize: "11px", color: "#BB0000", fontWeight: "600", display: "flex", alignItems: "center", gap: "6px" }}>
+          <AlertCircle size={14} color="#BB0000" style={{ flexShrink: 0 }} />
+          <span>{error}</span>
+        </div>
+      )}
     </div>
   );
 }
@@ -478,11 +493,12 @@ function UploadPanel({
 // ─── Full expanded content ──────────────────────────────────────────────────────
 
 function ExpandedRowContent({
-  record, stage, stageKey, docs, docsLoading, subTab, multiUpload, uploading, onUpload, onReplace, onDelete,
+  record, stage, stageKey, docs, docsLoading, subTab, multiUpload, uploading, error, onUpload, onReplace, onDelete,
 }: {
   record: ProcurementRecord; stage: Exclude<FrontendStageKey, "INV">; stageKey: StageKey;
   docs: StageDocument[]; docsLoading: boolean; subTab: "upload" | "change" | "view";
   multiUpload: boolean; uploading: boolean;
+  error?: string | null;
   onUpload: (ref: string, files: File[]) => Promise<void>;
   onReplace: (ref: string, docId: string) => void;
   onDelete: (docId: string) => Promise<void>;
@@ -506,7 +522,7 @@ function ExpandedRowContent({
       {(subTab === "view" || subTab === "change") && (
         <DocumentsPanel
           reference={reference} stage={stageKey} docs={docs} docsLoading={docsLoading}
-          canModify={subTab === "change"} onReplace={onReplace} onDelete={onDelete}
+          canModify={subTab === "change"} error={error} onReplace={onReplace} onDelete={onDelete}
         />
       )}
 
@@ -514,6 +530,7 @@ function ExpandedRowContent({
       {subTab === "upload" && (
         <UploadPanel
           reference={reference} multiUpload={multiUpload} uploading={uploading}
+          error={error}
           onUpload={(files) => onUpload(reference, files)}
         />
       )}
@@ -525,7 +542,7 @@ function ExpandedRowContent({
 
 function RecordsTable({
   stage, stageKey, records, config, expandedReferences, selectedReference,
-  documentsByReference, loadingReferences, subTab, uploading,
+  documentsByReference, loadingReferences, subTab, uploading, error,
   onRowClick, onUpload, onReplace, onDelete,
 }: {
   stage: Exclude<FrontendStageKey, "INV">; stageKey: StageKey;
@@ -533,6 +550,7 @@ function RecordsTable({
   expandedReferences: string[]; selectedReference: string;
   documentsByReference: Record<string, StageDocument[]>; loadingReferences: Set<string>;
   subTab: "upload" | "change" | "view"; uploading: boolean;
+  error?: string | null;
   onRowClick: (ref: string) => void;
   onUpload: (ref: string, files: File[]) => Promise<void>;
   onReplace: (ref: string, docId: string) => void;
@@ -596,6 +614,7 @@ function RecordsTable({
                           record={record} stage={stage} stageKey={stageKey}
                           docs={docs} docsLoading={docsLoading} subTab={subTab}
                           multiUpload={config.multiUpload} uploading={uploading}
+                          error={error}
                           onUpload={onUpload} onReplace={onReplace} onDelete={onDelete}
                         />
                       </td>
@@ -812,6 +831,7 @@ export function ProcurementStageModule({ config }: { config: StageModuleConfig }
               loadingReferences={loadingReferences}
               subTab={subTab}
               uploading={uploading}
+              error={error}
               onRowClick={handleRowClick}
               onUpload={handleUpload}
               onReplace={handleReplace}
