@@ -27,6 +27,17 @@ def create_app():
                     if isinstance(val, str) and val != val.strip():
                         clean = val.strip()
                         coll.update_one({"_id": doc["_id"]}, {"$set": {ref_field: clean}})
+
+            # Also sanitize supplier/vendor on purchase orders
+            for po in mongo.db.purchase_orders.find({}, {"supplier": 1, "vendor": 1}):
+                sup = po.get("supplier") or po.get("vendor")
+                if isinstance(sup, str):
+                    clean_sup = sup.strip()
+                    if po.get("supplier") != clean_sup or po.get("vendor") != clean_sup:
+                        mongo.db.purchase_orders.update_one(
+                            {"_id": po["_id"]},
+                            {"$set": {"supplier": clean_sup, "vendor": clean_sup}}
+                        )
     except Exception as e:
         print(f"[STARTUP WARNING] Could not sanitize whitespace: {e}", flush=True)
 

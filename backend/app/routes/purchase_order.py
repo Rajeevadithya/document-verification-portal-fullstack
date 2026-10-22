@@ -83,6 +83,7 @@ def _format_po_response(po_doc):
     if net_order_value is None:
         net_order_value = _calc_net_order_value(serialized.get("items", []))
 
+    supplier = str(serialized.get("supplier") or serialized.get("vendor") or serialized.get("LIFNR") or "").strip()
     data = OrderedDict()
     data["purchaseOrderNumber"]       = str(serialized.get("purchaseOrderNumber", "")).strip()
     data["purchaseDocumentType"]      = str(serialized.get("purchaseDocumentType", "")).strip()
@@ -92,6 +93,8 @@ def _format_po_response(po_doc):
     data["netOrderValue"]             = net_order_value
     data["purchaseOrganization"]      = str(serialized.get("purchaseOrganization", "")).strip()
     data["purchaseRequisitionNumber"] = str(serialized.get("purchaseRequisitionNumber", "")).strip()
+    data["supplier"]                  = supplier
+    data["vendor"]                    = supplier
     data["items"]                     = items
     return data
 
@@ -188,16 +191,19 @@ def ingest_po():
         else:
             net_val = safe_float(net_val)
 
+        sup_val = str(po.get("supplier") or po.get("vendor") or po.get("LIFNR") or "").strip()
+
         return {
             "purchaseOrderNumber":       po_num,
-            "purchaseDocumentType":      str(po.get("purchaseDocumentType") or po.get("document_type") or po.get("documentType") or po.get("BSART") or ""),
-            "purchasingGroup":            str(po.get("purchasingGroup") or po.get("purchasing_group") or po.get("EKGRP") or ""),
-            "companyCode":                str(po.get("companyCode") or po.get("company_code") or po.get("BUKRS") or ""),
-            "purchaseOrderDate":          str(po.get("purchaseOrderDate") or po.get("order_date") or po.get("BEDAT") or ""),
+            "purchaseDocumentType":      str(po.get("purchaseDocumentType") or po.get("document_type") or po.get("documentType") or po.get("BSART") or "").strip(),
+            "purchasingGroup":            str(po.get("purchasingGroup") or po.get("purchasing_group") or po.get("EKGRP") or "").strip(),
+            "companyCode":                str(po.get("companyCode") or po.get("company_code") or po.get("BUKRS") or "").strip(),
+            "purchaseOrderDate":          str(po.get("purchaseOrderDate") or po.get("order_date") or po.get("BEDAT") or "").strip(),
             "netOrderValue":             round(net_val, 2),
-            "purchaseOrganization":       str(po.get("purchaseOrganization") or po.get("purchase_organization") or po.get("EKORG") or ""),
+            "purchaseOrganization":       str(po.get("purchaseOrganization") or po.get("purchase_organization") or po.get("EKORG") or "").strip(),
             "purchaseRequisitionNumber": pr_num,
-            "supplier":                    str(po.get("supplier") or po.get("vendor") or po.get("LIFNR") or ""),
+            "supplier":                    sup_val,
+            "vendor":                      sup_val,
             "items":                       items,
             "created_at":                  datetime.utcnow(),
             "updated_at":                  datetime.utcnow(),
@@ -242,6 +248,7 @@ def list_pos():
             "purchaseOrderNumber": 1, "purchaseDocumentType": 1, "purchasingGroup": 1,
             "companyCode": 1, "purchaseOrderDate": 1, "netOrderValue": 1,
             "purchaseOrganization": 1, "purchaseRequisitionNumber": 1,
+            "supplier": 1, "vendor": 1,
             "items": 1,
         }
     ).sort("purchaseOrderNumber", 1)

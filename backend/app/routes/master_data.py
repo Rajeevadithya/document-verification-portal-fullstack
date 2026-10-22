@@ -24,7 +24,7 @@ def list_pr_numbers():
 def list_po_numbers():
     """Return all available PO numbers for value help picker."""
     cursor = mongo.db.purchase_orders.find(
-        {}, {"purchaseOrderNumber": 1, "purchaseRequisitionNumber": 1, "vendor": 1, "status": 1, "_id": 0}
+        {}, {"purchaseOrderNumber": 1, "purchaseRequisitionNumber": 1, "vendor": 1, "supplier": 1, "status": 1, "_id": 0}
     ).sort("purchaseOrderNumber", 1)
     data = list(cursor)
     return success_response(data, "PO numbers fetched")
