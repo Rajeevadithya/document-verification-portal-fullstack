@@ -48,13 +48,30 @@ def create_app():
                         if cand:
                             root_po = str(cand).strip()
                             break
+                root_storage = grn.get("storageLocation") or grn.get("storage_location") or grn.get("LGORT")
+                if not root_storage and grn.get("items"):
+                    for it in grn["items"]:
+                        cand = it.get("storageLocation") or it.get("storage_location") or it.get("storageLoc") or it.get("LGORT")
+                        if cand:
+                            root_storage = str(cand).strip()
+                            break
+
+                updates = {}
                 if root_po:
                     clean_po = str(root_po).strip()
                     if grn.get("purchaseOrderNumber") != clean_po or grn.get("purchaseOrder") != clean_po:
-                        mongo.db.goods_receipts.update_one(
-                            {"_id": grn["_id"]},
-                            {"$set": {"purchaseOrderNumber": clean_po, "purchaseOrder": clean_po, "po_number": clean_po}}
-                        )
+                        updates["purchaseOrderNumber"] = clean_po
+                        updates["purchaseOrder"] = clean_po
+                        updates["po_number"] = clean_po
+
+                if root_storage:
+                    clean_storage = str(root_storage).strip()
+                    if grn.get("storageLocation") != clean_storage or grn.get("storage_location") != clean_storage:
+                        updates["storageLocation"] = clean_storage
+                        updates["storage_location"] = clean_storage
+
+                if updates:
+                    mongo.db.goods_receipts.update_one({"_id": grn["_id"]}, {"$set": updates})
     except Exception as e:
         print(f"[STARTUP WARNING] Could not sanitize whitespace: {e}", flush=True)
 

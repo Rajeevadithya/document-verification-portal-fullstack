@@ -73,6 +73,8 @@ def _format_grn_response(grn_doc):
         ordered["price"]               = item.get("price", "")
         ordered["amount"]              = item.get("amount", "")
         ordered["plant"]               = str(item.get("plant", "")).strip()
+        ordered["storageLocation"]     = str(item.get("storageLocation") or item.get("storage_location") or item.get("LGORT") or "").strip()
+        ordered["storage_location"]    = ordered["storageLocation"]
         ordered["purchaseOrder"]       = str(item.get("purchaseOrder", "")).strip()
         return ordered
 
@@ -92,6 +94,14 @@ def _format_grn_response(grn_doc):
         or ""
     ).strip()
 
+    storage_loc = str(
+        serialized.get("storageLocation")
+        or serialized.get("storage_location")
+        or (serialized.get("items") and serialized["items"][0].get("storageLocation"))
+        or (serialized.get("items") and serialized["items"][0].get("storage_location"))
+        or ""
+    ).strip()
+
     data = OrderedDict()
     data["materialDocumentNumber"] = material_document_number
     data["materialDocumentYear"]   = material_document_year
@@ -100,6 +110,8 @@ def _format_grn_response(grn_doc):
     data["purchaseOrderNumber"]    = po_num
     data["purchaseOrder"]          = po_num
     data["po_number"]              = po_num
+    data["storageLocation"]        = storage_loc
+    data["storage_location"]       = storage_loc
     data["items"]                  = [reorder_item(i) for i in serialized.get("items", [])]
     return data
 
@@ -173,6 +185,14 @@ def ingest_grn():
         post_date = str(grn.get("postingDate") or grn.get("posting_date") or grn.get("BUDAT") or "")
         year = str(grn.get("materialDocumentYear") or grn.get("material_document_year") or grn.get("MJAHR") or _extract_year(doc_date))
 
+        root_storage = str(
+            grn.get("storageLocation")
+            or grn.get("storage_location")
+            or grn.get("storageLoc")
+            or grn.get("LGORT")
+            or ""
+        ).strip()
+
         if not po_fallback and raw_items:
             for item in raw_items:
                 if isinstance(item, dict):
@@ -190,6 +210,16 @@ def ingest_grn():
             amt_val = item.get("amount") or item.get("total_amount") or item.get("DMBTR") or item.get("WRBTR")
             amount = round(safe_float(amt_val, default=round(qty * price, 2)), 2)
             item_po = str(item.get("purchaseOrder") or item.get("purchaseOrderNumber") or item.get("po_number") or item.get("EBELN") or po_fallback).strip()
+            item_storage = str(
+                item.get("storageLocation")
+                or item.get("storage_location")
+                or item.get("storageLoc")
+                or item.get("LGORT")
+                or root_storage
+            ).strip()
+            if not root_storage and item_storage:
+                root_storage = item_storage
+
             items.append({
                 "itemNumber":          str(item.get("itemNumber") or item.get("item_number") or item.get("ZEILE") or item.get("EBELP") or ""),
                 "material":             str(item.get("material") or item.get("material_number") or item.get("MATNR") or ""),
@@ -198,6 +228,8 @@ def ingest_grn():
                 "price":                price,
                 "amount":               amount,
                 "plant":                str(item.get("plant") or item.get("WERKS") or ""),
+                "storageLocation":     item_storage,
+                "storage_location":    item_storage,
                 "purchaseOrder":       item_po,
             })
 
@@ -209,6 +241,8 @@ def ingest_grn():
             "purchaseOrderNumber":     po_fallback,
             "purchaseOrder":           po_fallback,
             "po_number":               po_fallback,
+            "storageLocation":         root_storage,
+            "storage_location":        root_storage,
             "items":                    items,
             "created_at":               datetime.utcnow(),
             "updated_at":               datetime.utcnow(),
@@ -257,6 +291,8 @@ def list_grns():
             "purchaseOrderNumber": 1,
             "purchaseOrder": 1,
             "po_number": 1,
+            "storageLocation": 1,
+            "storage_location": 1,
             "items": 1,
         }
     ).sort("materialDocumentNumber", 1)

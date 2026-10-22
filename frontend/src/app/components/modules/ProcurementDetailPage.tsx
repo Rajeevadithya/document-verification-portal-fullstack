@@ -226,7 +226,7 @@ function POItemsTable({ record }: { record: PORecord }) {
 }
 
 function GRNItemsTable({ record }: { record: GRNRecord }) {
-  const cols = ["Item Number", "Material", "Material Description", "Quantity", "Price", "Amount", "Plant", "Purchase Order"];
+  const cols = ["Item Number", "Material", "Material Description", "Quantity", "Price", "Amount", "Plant", "Storage Location", "Purchase Order"];
   return (
     <div style={{ overflowX: "auto" }}>
       <table style={{ borderCollapse: "collapse", width: "100%", minWidth: "1000px" }}>
@@ -243,6 +243,7 @@ function GRNItemsTable({ record }: { record: GRNRecord }) {
               <td style={{ ...TD, textAlign: "right" }}>{formatCurrency(item.price)}</td>
               <td style={{ ...TD, textAlign: "right", fontWeight: "600" }}>{formatCurrency(item.amount)}</td>
               <td style={TD}>{item.plant}</td>
+              <td style={TD}>{item.storage_location || item.storageLocation || record.storage_location || record.storageLocation || "—"}</td>
               <td style={{ ...TD, color: "#0070F2", borderRight: "none" }}>{item.purchase_order || record.po_number}</td>
             </tr>
           ))}
@@ -741,6 +742,7 @@ export function ProcurementDetailPage() {
               </>}
               {isGRNRecord(record) && <>
                 <MetaChip label="PO Number" value={record.po_number || "—"} />
+                <MetaChip label="Storage Location" value={record.storage_location || record.storageLocation || record.items[0]?.storage_location || "—"} />
                 <MetaChip label="Document Date" value={formatDate(record.document_date)} />
                 <MetaChip label="Posting Date" value={formatDate(record.posting_date)} />
               </>}

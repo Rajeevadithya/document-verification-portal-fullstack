@@ -178,12 +178,16 @@ export type GRNItem = {
   purchase_order: string;
   unit_of_measure?: string;
   storage_location?: string;
+  storageLocation?: string;
 };
 
 export type GRNRecord = {
   _id: string;
   grn_number: string;
   po_number: string;
+  storage_location?: string;
+  storageLocation?: string;
+  plant?: string;
   document_date: string;
   posting_date: string;
   status: string;

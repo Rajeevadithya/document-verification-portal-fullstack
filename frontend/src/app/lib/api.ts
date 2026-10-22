@@ -81,7 +81,7 @@ function normalizePrItem(item: any): PRItem {
     unit_of_measure: asString(item?.unit_of_measure),
     valuation_price: price,
     delivery_date: asString(item?.delivery_date),
-    storage_location: asString(item?.storage_location),
+    storage_location: asString(item?.storage_location ?? item?.storageLocation ?? item?.storageLoc ?? item?.LGORT),
     purchase_group: asString(item?.purchase_group ?? item?.purchaseOrganization),
   };
 }
@@ -99,7 +99,7 @@ function normalizePoItem(item: any): POItem {
     net_price: price,
     delivery_date: asString(item?.delivery_date),
     plant: asString(item?.plant),
-    storage_location: asString(item?.storage_location),
+    storage_location: asString(item?.storage_location ?? item?.storageLocation ?? item?.storageLoc ?? item?.LGORT),
   };
 }
 
@@ -108,6 +108,7 @@ function normalizeGrnItem(item: any): GRNItem {
   const price = toNumber(item?.price);
   const amount = toNumber(item?.amount, price * quantity);
   const itemNumber = asString(item?.item_number ?? item?.itemNumber ?? item?.item);
+  const storageLoc = asString(item?.storage_location ?? item?.storageLocation ?? item?.storageLoc ?? item?.LGORT);
   return {
     item: itemNumber,
     item_number: itemNumber,
@@ -120,7 +121,8 @@ function normalizeGrnItem(item: any): GRNItem {
     plant: asString(item?.plant),
     purchase_order: asString(item?.purchase_order ?? item?.purchaseOrder ?? item?.purchaseOrderNumber),
     unit_of_measure: asString(item?.unit_of_measure),
-    storage_location: asString(item?.storage_location),
+    storage_location: storageLoc,
+    storageLocation: storageLoc,
   };
 }
 
@@ -162,17 +164,36 @@ function normalizePoRecord(record: any): PORecord {
 function normalizeGrnRecord(record: any): GRNRecord {
   const firstItem = Array.isArray(record?.items) ? record.items[0] : null;
   const items = Array.isArray(record?.items) ? record.items.map(normalizeGrnItem) : [];
-  const poNumber = asString(record?.po_number ?? record?.purchaseOrderNumber ?? firstItem?.purchaseOrder);
+  const poNumber = asString(record?.po_number ?? record?.purchaseOrderNumber ?? record?.purchaseOrder ?? firstItem?.purchaseOrder);
+  const storageLoc = asString(
+    record?.storage_location
+    ?? record?.storageLocation
+    ?? record?.storageLoc
+    ?? record?.LGORT
+    ?? firstItem?.storage_location
+    ?? firstItem?.storageLocation
+    ?? firstItem?.storageLoc
+    ?? firstItem?.LGORT
+  );
+  const plant = asString(record?.plant ?? firstItem?.plant);
   return {
     _id: asString(record?._id),
     grn_number: asString(record?.grn_number ?? record?.materialDocumentNumber),
     po_number: poNumber,
+    storage_location: storageLoc,
+    storageLocation: storageLoc,
+    plant,
     document_date: asString(record?.document_date ?? record?.documentDate),
     posting_date: asString(record?.posting_date ?? record?.postingDate),
     status: asString(record?.status),
     created_at: asString(record?.created_at),
     updated_at: asString(record?.updated_at),
-    items: items.map((item: GRNItem) => ({ ...item, purchase_order: item.purchase_order || poNumber })),
+    items: items.map((item: GRNItem) => ({
+      ...item,
+      purchase_order: item.purchase_order || poNumber,
+      storage_location: item.storage_location || storageLoc,
+      storageLocation: item.storageLocation || storageLoc,
+    })),
     uploaded_document: record?.uploaded_document ? normalizeStageDocument(record.uploaded_document) : null,
     has_document: typeof record?.has_document === "boolean" ? record.has_document : undefined,
   };

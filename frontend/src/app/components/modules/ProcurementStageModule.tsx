@@ -125,13 +125,24 @@ function getStatus(r: ProcurementRecord) {
   return r.status || "Open";
 }
 function getPlant(r: ProcurementRecord) {
-  return r.items[0]?.plant || "—";
+  const root = (r as any).plant;
+  if (root) return root;
+  for (const item of r.items) {
+    if (item.plant) return item.plant;
+  }
+  return "—";
 }
 function getMaterial(r: ProcurementRecord) {
   return r.items[0]?.material || "—";
 }
 function getStorageLocation(r: ProcurementRecord) {
-  return r.items[0]?.storage_location || "—";
+  const root = (r as any).storage_location || (r as any).storageLocation;
+  if (root) return root;
+  for (const item of r.items) {
+    const loc = (item as any).storage_location || (item as any).storageLocation;
+    if (loc) return loc;
+  }
+  return "—";
 }
 function getTotalValue(r: ProcurementRecord) {
   if (isPRRecord(r)) {
@@ -330,7 +341,7 @@ function ItemsSubTable({ record, stage }: { record: ProcurementRecord; stage: Ex
     );
   }
   const grn = record as GRNRecord;
-  const cols = ["Item Number", "Material", "Material Description", "Quantity", "Price", "Amount", "Plant", "Purchase Order"];
+  const cols = ["Item Number", "Material", "Material Description", "Quantity", "Price", "Amount", "Plant", "Storage Location", "Purchase Order"];
   return (
     <table style={{ borderCollapse: "collapse", width: "100%", minWidth: "960px" }}>
       <thead><tr>{cols.map((c) => <th key={c} style={SUB_TH}>{c}</th>)}</tr></thead>
@@ -344,6 +355,7 @@ function ItemsSubTable({ record, stage }: { record: ProcurementRecord; stage: Ex
             <td style={SUB_TD}>{formatCurrency(item.price)}</td>
             <td style={SUB_TD}>{formatCurrency(item.amount)}</td>
             <td style={SUB_TD}>{item.plant}</td>
+            <td style={SUB_TD}>{item.storage_location || (item as any).storageLocation || grn.storage_location || "—"}</td>
             <td style={{ ...SUB_TD, color: "#0070F2", borderRight: "none" }}>{item.purchase_order || grn.po_number}</td>
           </tr>
         ))}
