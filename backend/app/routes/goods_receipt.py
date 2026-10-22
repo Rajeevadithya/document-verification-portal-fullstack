@@ -193,6 +193,10 @@ def ingest_grn():
             or ""
         ).strip()
 
+        raw_items = grn.get("items") or grn.get("line_items") or grn.get("lineItems") or []
+        if not isinstance(raw_items, list):
+            raw_items = [raw_items]
+
         if not po_fallback and raw_items:
             for item in raw_items:
                 if isinstance(item, dict):
