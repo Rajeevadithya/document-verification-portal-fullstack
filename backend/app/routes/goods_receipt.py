@@ -84,11 +84,22 @@ def _format_grn_response(grn_doc):
         or _extract_year(serialized.get("documentDate", ""))
     ).strip()
 
+    po_num = str(
+        serialized.get("purchaseOrderNumber")
+        or serialized.get("purchaseOrder")
+        or serialized.get("po_number")
+        or (serialized.get("items") and serialized["items"][0].get("purchaseOrder"))
+        or ""
+    ).strip()
+
     data = OrderedDict()
     data["materialDocumentNumber"] = material_document_number
     data["materialDocumentYear"]   = material_document_year
     data["documentDate"]           = str(serialized.get("documentDate", "")).strip()
     data["postingDate"]            = str(serialized.get("postingDate", "")).strip()
+    data["purchaseOrderNumber"]    = po_num
+    data["purchaseOrder"]          = po_num
+    data["po_number"]              = po_num
     data["items"]                  = [reorder_item(i) for i in serialized.get("items", [])]
     return data
 
@@ -162,8 +173,15 @@ def ingest_grn():
         post_date = str(grn.get("postingDate") or grn.get("posting_date") or grn.get("BUDAT") or "")
         year = str(grn.get("materialDocumentYear") or grn.get("material_document_year") or grn.get("MJAHR") or _extract_year(doc_date))
 
+        if not po_fallback and raw_items:
+            for item in raw_items:
+                if isinstance(item, dict):
+                    cand = str(item.get("purchaseOrder") or item.get("purchaseOrderNumber") or item.get("po_number") or item.get("EBELN") or "").strip()
+                    if cand:
+                        po_fallback = cand
+                        break
+
         items = []
-        raw_items = grn.get("items") or grn.get("line_items") or grn.get("lineItems") or []
         for item in raw_items:
             if not isinstance(item, dict):
                 continue
@@ -188,6 +206,9 @@ def ingest_grn():
             "materialDocumentYear":   year,
             "documentDate":            doc_date,
             "postingDate":             post_date,
+            "purchaseOrderNumber":     po_fallback,
+            "purchaseOrder":           po_fallback,
+            "po_number":               po_fallback,
             "items":                    items,
             "created_at":               datetime.utcnow(),
             "updated_at":               datetime.utcnow(),
@@ -229,9 +250,14 @@ def list_grns():
     cursor = mongo.db.goods_receipts.find(
         {},
         {
-            "materialDocumentNumber": 1, "materialDocumentNumber": 1,
-            "materialDocumentYear": 1, "documentDate": 1,
-            "postingDate": 1, "items": 1,
+            "materialDocumentNumber": 1,
+            "materialDocumentYear": 1,
+            "documentDate": 1,
+            "postingDate": 1,
+            "purchaseOrderNumber": 1,
+            "purchaseOrder": 1,
+            "po_number": 1,
+            "items": 1,
         }
     ).sort("materialDocumentNumber", 1)
 

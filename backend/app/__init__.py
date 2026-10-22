@@ -38,6 +38,23 @@ def create_app():
                             {"_id": po["_id"]},
                             {"$set": {"supplier": clean_sup, "vendor": clean_sup}}
                         )
+
+            # Also ensure purchaseOrderNumber is populated at root of goods_receipts
+            for grn in mongo.db.goods_receipts.find():
+                root_po = grn.get("purchaseOrderNumber") or grn.get("purchaseOrder") or grn.get("po_number")
+                if not root_po and grn.get("items"):
+                    for it in grn["items"]:
+                        cand = it.get("purchaseOrder") or it.get("purchaseOrderNumber") or it.get("po_number") or it.get("EBELN")
+                        if cand:
+                            root_po = str(cand).strip()
+                            break
+                if root_po:
+                    clean_po = str(root_po).strip()
+                    if grn.get("purchaseOrderNumber") != clean_po or grn.get("purchaseOrder") != clean_po:
+                        mongo.db.goods_receipts.update_one(
+                            {"_id": grn["_id"]},
+                            {"$set": {"purchaseOrderNumber": clean_po, "purchaseOrder": clean_po, "po_number": clean_po}}
+                        )
     except Exception as e:
         print(f"[STARTUP WARNING] Could not sanitize whitespace: {e}", flush=True)
 
