@@ -21,7 +21,8 @@ from flask import Blueprint, request, send_file
 from backend.app import mongo
 from datetime import datetime
 from backend.app.utils.helpers import (
-    serialize_doc, success_response, error_response, allowed_file
+    serialize_doc, success_response, error_response, allowed_file,
+    safe_float, parse_request_json
 )
 from backend.app.services.document_service import (
     save_document, change_document, delete_document, get_active_documents,
@@ -115,37 +116,65 @@ def ingest_pr():
             "PR Ingestion endpoint is active. Send a POST request with JSON payload to ingest PR records."
         )
 
-    data = request.json
+    data = parse_request_json(request)
+    raw_preview = request.get_data(as_text=True)[:200]
+    print(f"[PR INGEST DEBUG] Received: {raw_preview}", flush=True)
+
     if not data:
-        return error_response("No data received. Send JSON payload with 'purchaseRequisitionNumber' and 'items'.", 400)
+        return error_response(
+            "No data received. Send JSON payload with 'purchaseRequisitionNumber' (or 'pr_number') and 'items'.",
+            400
+        )
 
     def build_pr_doc(pr):
+        if not isinstance(pr, dict):
+            return {"purchaseRequisitionNumber": ""}
+
+        pr_num = str(
+            pr.get("purchaseRequisitionNumber")
+            or pr.get("pr_number")
+            or pr.get("prNumber")
+            or pr.get("purchase_requisition_number")
+            or pr.get("BANFN")
+            or pr.get("id")
+            or ""
+        ).strip()
+
         items = []
-        for item in pr.get("items", []):
-            qty   = float(item.get("quantity") or 0)
-            price = float(item.get("price") or 0)
+        raw_items = pr.get("items") or pr.get("line_items") or pr.get("lineItems") or []
+        for item in raw_items:
+            if not isinstance(item, dict):
+                continue
+            qty   = safe_float(item.get("quantity") or item.get("qty") or item.get("MENGE"))
+            price = safe_float(item.get("price") or item.get("unit_price") or item.get("NETPR"))
+            amt_val = item.get("amount") or item.get("total_amount") or item.get("WRBTR")
+            amount = round(safe_float(amt_val, default=round(qty * price, 2)), 2)
             items.append({
-                "itemNumber":           item.get("itemNumber", ""),
-                "material":              item.get("material", ""),
-                "materialDescription":  item.get("materialDescription", ""),
-                "plant":                 item.get("plant", ""),
+                "itemNumber":           str(item.get("itemNumber") or item.get("item_number") or item.get("item") or item.get("EBELP") or ""),
+                "material":              str(item.get("material") or item.get("material_number") or item.get("MATNR") or ""),
+                "materialDescription":  str(item.get("materialDescription") or item.get("material_description") or item.get("description") or item.get("MAKTX") or ""),
+                "plant":                 str(item.get("plant") or item.get("WERKS") or ""),
                 "quantity":              qty,
                 "price":                 price,
-                "amount":                round(float(item.get("amount") or qty * price), 2),
-                "purchaseOrganization": item.get("purchaseOrganization", ""),
+                "amount":                amount,
+                "purchaseOrganization": str(item.get("purchaseOrganization") or item.get("purchase_organization") or item.get("EKORG") or ""),
             })
 
-        total_value = pr.get("totalValue")
+        total_value = pr.get("totalValue") or pr.get("total_value") or pr.get("total")
         if total_value is None:
             total_value = _calc_total_value(items)
+        else:
+            total_value = safe_float(total_value)
+
+        doc_type = str(pr.get("purchaseDocumentType") or pr.get("document_type") or pr.get("documentType") or pr.get("BSART") or "")
 
         return {
-            "purchaseRequisitionNumber":     pr.get("purchaseRequisitionNumber"),
-            "purchaseDocumentType": pr.get("purchaseDocumentType", ""),
-            "totalValue":   round(float(total_value), 2),
-            "items":         items,
-            "created_at":    datetime.utcnow(),
-            "updated_at":    datetime.utcnow(),
+            "purchaseRequisitionNumber": pr_num,
+            "purchaseDocumentType":      doc_type,
+            "totalValue":                round(total_value, 2),
+            "items":                     items,
+            "created_at":                datetime.utcnow(),
+            "updated_at":                datetime.utcnow(),
         }
 
     if isinstance(data, list):
@@ -164,7 +193,11 @@ def ingest_pr():
 
     pr_doc = build_pr_doc(data)
     if not pr_doc["purchaseRequisitionNumber"]:
-        return error_response("pr_number required", 400)
+        keys_found = list(data.keys()) if isinstance(data, dict) else str(type(data))
+        return error_response(
+            f"Missing required field 'purchaseRequisitionNumber' (or 'pr_number'). Received keys: {keys_found}",
+            400
+        )
 
     mongo.db.purchase_requisitions.update_one(
         {"purchaseRequisitionNumber": pr_doc["purchaseRequisitionNumber"]},

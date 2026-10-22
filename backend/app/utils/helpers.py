@@ -125,3 +125,71 @@ def get_upload_path(stage: str) -> str:
     path = os.path.join(current_app.config["UPLOAD_FOLDER"], sub)
     os.makedirs(path, exist_ok=True)
     return path
+
+def safe_float(val, default=0.0) -> float:
+    if val is None:
+        return default
+    if isinstance(val, (int, float)):
+        return float(val)
+    if isinstance(val, str):
+        val = val.replace(",", "").strip()
+        if not val:
+            return default
+        try:
+            return float(val)
+        except ValueError:
+            return default
+    return default
+
+def parse_request_json(req):
+    """
+    Robustly extract JSON / dictionary from a Flask request:
+    - Handles Content-Type: application/json
+    - Handles missing, text/plain, or form Content-Type
+    - Handles single-quoted dict strings from Windows CMD (ast.literal_eval fallback)
+    - Handles SAP OData v2 (d / results), SAP OData v4 (value), and common wrappers (data / payload / records)
+    """
+    data = req.get_json(silent=True)
+    if data is None:
+        try:
+            data = req.get_json(force=True, silent=True)
+        except Exception:
+            pass
+
+    if data is None and req.form:
+        for field in ("payload", "data", "json", "body", "record"):
+            if field in req.form:
+                try:
+                    import json
+                    data = json.loads(req.form[field])
+                    break
+                except Exception:
+                    pass
+        if data is None:
+            data = dict(req.form)
+
+    if data is None:
+        raw_body = req.get_data(as_text=True)
+        if raw_body and raw_body.strip():
+            raw_stripped = raw_body.strip()
+            try:
+                import json
+                data = json.loads(raw_stripped)
+            except Exception:
+                try:
+                    import ast
+                    evaluated = ast.literal_eval(raw_stripped)
+                    if isinstance(evaluated, (dict, list)):
+                        data = evaluated
+                except Exception:
+                    pass
+
+    if isinstance(data, dict):
+        for wrapper in ("data", "d", "value", "results", "records", "payload"):
+            if wrapper in data and isinstance(data[wrapper], (dict, list)):
+                data = data[wrapper]
+                break
+        if isinstance(data, dict) and "results" in data and isinstance(data["results"], list):
+            data = data["results"]
+
+    return data

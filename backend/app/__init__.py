@@ -43,6 +43,8 @@ def create_app():
     from .services.document_service import OCRValidationError
     from .utils.helpers import error_response
 
+    from werkzeug.exceptions import HTTPException
+
     @app.errorhandler(OCRValidationError)
     def handle_ocr_validation_error(exc):
         return error_response(str(exc), 400)
@@ -50,5 +52,9 @@ def create_app():
     @app.errorhandler(ValueError)
     def handle_value_error(exc):
         return error_response(str(exc), 400)
+
+    @app.errorhandler(HTTPException)
+    def handle_http_exception(exc):
+        return error_response(exc.description, exc.code)
 
     return app

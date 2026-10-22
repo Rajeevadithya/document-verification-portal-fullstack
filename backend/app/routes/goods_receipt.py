@@ -21,7 +21,8 @@ from flask import Blueprint, request, send_file
 from datetime import datetime
 from backend.app import mongo
 from backend.app.utils.helpers import (
-    serialize_doc, success_response, error_response, allowed_file
+    serialize_doc, success_response, error_response, allowed_file,
+    safe_float, parse_request_json
 )
 from backend.app.services.document_service import (
     save_document, change_document, delete_document, get_active_documents, get_document_by_id,
@@ -96,12 +97,13 @@ def _format_grn_response(grn_doc):
 @grn_bp.route("/ingest", methods=["GET", "POST"])
 def ingest_grn():
     """
-    POST body:
+    POST body (accepts single dict or list of dicts):
     {
-        "materialDocumentNumber":             "4900000198",   <- also accepts material_document_number
-        "materialDocumentYear": "2026",          <- optional, derived from document_date
-        "documentDate":          "2026-03-25",
-        "postingDate":           "2026-03-25",
+        "materialDocumentNumber": "4900000198",   <- or grn_number / MBLNR
+        "materialDocumentYear":   "2026",         <- optional, derived from documentDate
+        "documentDate":            "2026-03-25",
+        "postingDate":             "2026-03-25",
+        "purchaseOrderNumber":     "4500000004",   <- optional fallback PO
         "items": [
             {
                 "itemNumber":          "10",
@@ -122,53 +124,96 @@ def ingest_grn():
             "GRN Ingestion endpoint is active. Send a POST request with JSON payload to ingest GRN records."
         )
 
-    data = request.get_json()
+    data = parse_request_json(request)
+    raw_preview = request.get_data(as_text=True)[:200]
+    print(f"[GRN INGEST DEBUG] Received: {raw_preview}", flush=True)
+
     if not data:
-        return error_response("No data received. Send JSON payload with 'materialDocumentNumber' and 'items'.", 400)
+        return error_response(
+            "No data received. Send JSON payload with 'materialDocumentNumber' (or 'grn_number') and 'items'.",
+            400
+        )
 
-    po_number = data.get("purchaseOrderNumber") or data.get("purchaseOrder") or ""
+    def build_grn_doc(grn):
+        if not isinstance(grn, dict):
+            return {"materialDocumentNumber": ""}
 
-    grn_number = (
-        data.get("materialDocumentNumber")
-        or data.get("goods_receipt_number")
-        or data.get("materialDocumentNumber")
-        or ""
-    )
+        grn_num = str(
+            grn.get("materialDocumentNumber")
+            or grn.get("grn_number")
+            or grn.get("grnNumber")
+            or grn.get("goods_receipt_number")
+            or grn.get("material_document_number")
+            or grn.get("MBLNR")
+            or grn.get("id")
+            or ""
+        ).strip()
 
-    document_date = data.get("documentDate", "")
-    material_document_year = (
-        data.get("materialDocumentYear")
-        or _extract_year(document_date)
-    )
+        po_fallback = str(
+            grn.get("purchaseOrderNumber")
+            or grn.get("purchaseOrder")
+            or grn.get("po_number")
+            or grn.get("poNumber")
+            or grn.get("EBELN")
+            or ""
+        ).strip()
 
-    items = []
-    for item in data.get("items", []):
-        qty   = float(item.get("quantity") or 0)
-        price = float(item.get("price") or 0)
-        items.append({
-            "itemNumber":          item.get("itemNumber", ""),
-            "material":             item.get("material", ""),
-            "materialDescription": item.get("materialDescription", ""),
-            "quantity":             qty,
-            "price":                price,
-            "amount":               round(float(item.get("amount") or qty * price), 2),
-            "plant":                item.get("plant", ""),
-            "purchaseOrder":       item.get("purchaseOrder") or item.get("purchaseOrderNumber") or po_number,
-        })
+        doc_date = str(grn.get("documentDate") or grn.get("document_date") or grn.get("docDate") or grn.get("BLDAT") or "")
+        post_date = str(grn.get("postingDate") or grn.get("posting_date") or grn.get("BUDAT") or "")
+        year = str(grn.get("materialDocumentYear") or grn.get("material_document_year") or grn.get("MJAHR") or _extract_year(doc_date))
 
-    grn_doc = {
-        "materialDocumentNumber":               grn_number,
-        "materialDocumentNumber": grn_number,
-        "materialDocumentYear":   str(material_document_year),
-        "documentDate":            document_date,
-        "postingDate":             data.get("postingDate", ""),
-        "items":                    items,
-        "created_at":               datetime.utcnow(),
-        "updated_at":               datetime.utcnow(),
-    }
+        items = []
+        raw_items = grn.get("items") or grn.get("line_items") or grn.get("lineItems") or []
+        for item in raw_items:
+            if not isinstance(item, dict):
+                continue
+            qty   = safe_float(item.get("quantity") or item.get("qty") or item.get("MENGE"))
+            price = safe_float(item.get("price") or item.get("unit_price") or item.get("NETPR"))
+            amt_val = item.get("amount") or item.get("total_amount") or item.get("DMBTR") or item.get("WRBTR")
+            amount = round(safe_float(amt_val, default=round(qty * price, 2)), 2)
+            item_po = str(item.get("purchaseOrder") or item.get("purchaseOrderNumber") or item.get("po_number") or item.get("EBELN") or po_fallback).strip()
+            items.append({
+                "itemNumber":          str(item.get("itemNumber") or item.get("item_number") or item.get("ZEILE") or item.get("EBELP") or ""),
+                "material":             str(item.get("material") or item.get("material_number") or item.get("MATNR") or ""),
+                "materialDescription": str(item.get("materialDescription") or item.get("material_description") or item.get("description") or item.get("MAKTX") or ""),
+                "quantity":             qty,
+                "price":                price,
+                "amount":               amount,
+                "plant":                str(item.get("plant") or item.get("WERKS") or ""),
+                "purchaseOrder":       item_po,
+            })
 
+        return {
+            "materialDocumentNumber": grn_num,
+            "materialDocumentYear":   year,
+            "documentDate":            doc_date,
+            "postingDate":             post_date,
+            "items":                    items,
+            "created_at":               datetime.utcnow(),
+            "updated_at":               datetime.utcnow(),
+        }
+
+    if isinstance(data, list):
+        inserted = []
+        for grn in data:
+            grn_doc = build_grn_doc(grn)
+            if not grn_doc["materialDocumentNumber"]:
+                continue
+            mongo.db.goods_receipts.update_one(
+                {"materialDocumentNumber": grn_doc["materialDocumentNumber"]},
+                {"$set": grn_doc},
+                upsert=True
+            )
+            inserted.append(grn_doc["materialDocumentNumber"])
+        return success_response(inserted, "GRNs ingested")
+
+    grn_doc = build_grn_doc(data)
     if not grn_doc["materialDocumentNumber"]:
-        return error_response("grn_number (or material_document_number) is required", 400)
+        keys_found = list(data.keys()) if isinstance(data, dict) else str(type(data))
+        return error_response(
+            f"Missing required field 'materialDocumentNumber' (or 'grn_number'). Received keys: {keys_found}",
+            400
+        )
 
     mongo.db.goods_receipts.update_one(
         {"materialDocumentNumber": grn_doc["materialDocumentNumber"]},

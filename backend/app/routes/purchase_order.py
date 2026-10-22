@@ -22,7 +22,8 @@ import os
 from flask import Blueprint, request, send_file
 from backend.app import mongo
 from backend.app.utils.helpers import (
-    serialize_doc, success_response, error_response, allowed_file
+    serialize_doc, success_response, error_response, allowed_file,
+    safe_float, parse_request_json
 )
 from backend.app.services.document_service import (
     save_document, change_document, delete_document, get_active_documents, get_document_by_id,
@@ -99,17 +100,17 @@ def _format_po_response(po_doc):
 @po_bp.route("/ingest", methods=["GET", "POST"])
 def ingest_po():
     """
-    POST body:
+    POST body (accepts single dict or list of dicts):
     {
-        "purchaseOrderNumber":                   "9000000000",
-        "purchaseDocumentType":               "Spares (ZSPR)",
+        "purchaseOrderNumber":        "9000000000",   <- or po_number / EBELN
+        "purchaseDocumentType":       "Spares (ZSPR)",
         "purchasingGroup":            "M01",
         "companyCode":                "MLTD",
-        "purchaseOrderDate":         "2026-04-06",
-        "netOrderValue":             480.0,        <- optional, auto-calculated
+        "purchaseOrderDate":          "2026-04-06",
+        "netOrderValue":              480.0,          <- optional, auto-calculated
         "purchaseOrganization":       "MGHP",
-        "purchaseRequisitionNumber": "",
-        "supplier":                    "34...",
+        "purchaseRequisitionNumber":  "",             <- or pr_number / BANFN
+        "supplier":                   "34...",        <- or vendor / LIFNR
         "items": [
             {
                 "itemNumber":          "10",
@@ -129,47 +130,100 @@ def ingest_po():
             "PO Ingestion endpoint is active. Send a POST request with JSON payload to ingest PO records."
         )
 
-    data = request.get_json()
+    data = parse_request_json(request)
+    raw_preview = request.get_data(as_text=True)[:200]
+    print(f"[PO INGEST DEBUG] Received: {raw_preview}", flush=True)
+
     if not data:
-        return error_response("No data received. Send JSON payload with 'purchaseOrderNumber' and 'items'.", 400)
+        return error_response(
+            "No data received. Send JSON payload with 'purchaseOrderNumber' (or 'po_number') and 'items'.",
+            400
+        )
 
-    pr_number = data.get("purchaseRequisitionNumber") or data.get("purchaseRequisitionNumber") or ""
+    def build_po_doc(po):
+        if not isinstance(po, dict):
+            return {"purchaseOrderNumber": ""}
 
-    items = []
-    for item in data.get("items", []):
-        qty   = float(item.get("quantity") or 0)
-        price = float(item.get("price") or 0)
-        items.append({
-            "itemNumber":          item.get("itemNumber", ""),
-            "material":             item.get("material", ""),
-            "materialDescription": item.get("materialDescription", ""),
-            "quantity":             qty,
-            "price":                price,
-            "amount":               round(float(item.get("amount") or qty * price), 2),
-            "plant":                item.get("plant", ""),
-        })
+        po_num = str(
+            po.get("purchaseOrderNumber")
+            or po.get("po_number")
+            or po.get("poNumber")
+            or po.get("purchase_order_number")
+            or po.get("EBELN")
+            or po.get("id")
+            or ""
+        ).strip()
 
-    net_order_value = data.get("netOrderValue")
-    if net_order_value is None:
-        net_order_value = _calc_net_order_value(items)
+        pr_num = str(
+            po.get("purchaseRequisitionNumber")
+            or po.get("pr_number")
+            or po.get("prNumber")
+            or po.get("purchase_requisition_number")
+            or po.get("BANFN")
+            or ""
+        ).strip()
 
-    po_doc = {
-        "purchaseOrderNumber":                   data.get("purchaseOrderNumber"),
-        "purchaseDocumentType":               data.get("purchaseDocumentType", ""),
-        "purchasingGroup":            data.get("purchasingGroup", ""),
-        "companyCode":                data.get("companyCode", ""),
-        "purchaseOrderDate":         data.get("purchaseOrderDate", ""),
-        "netOrderValue":             round(float(net_order_value), 2),
-        "purchaseOrganization":       data.get("purchaseOrganization", ""),
-        "purchaseRequisitionNumber": pr_number,
-        "supplier":                    data.get("supplier", ""),
-        "items":                       items,
-        "created_at":                  datetime.utcnow(),
-        "updated_at":                  datetime.utcnow(),
-    }
+        items = []
+        raw_items = po.get("items") or po.get("line_items") or po.get("lineItems") or []
+        for item in raw_items:
+            if not isinstance(item, dict):
+                continue
+            qty   = safe_float(item.get("quantity") or item.get("qty") or item.get("MENGE"))
+            price = safe_float(item.get("price") or item.get("unit_price") or item.get("NETPR") or item.get("net_price"))
+            amt_val = item.get("amount") or item.get("total_amount") or item.get("WRBTR") or item.get("net_value")
+            amount = round(safe_float(amt_val, default=round(qty * price, 2)), 2)
+            items.append({
+                "itemNumber":          str(item.get("itemNumber") or item.get("item_number") or item.get("item") or item.get("EBELP") or ""),
+                "material":             str(item.get("material") or item.get("material_number") or item.get("MATNR") or ""),
+                "materialDescription": str(item.get("materialDescription") or item.get("material_description") or item.get("description") or item.get("MAKTX") or ""),
+                "quantity":             qty,
+                "price":                price,
+                "amount":               amount,
+                "plant":                str(item.get("plant") or item.get("WERKS") or ""),
+            })
 
+        net_val = po.get("netOrderValue") or po.get("net_order_value") or po.get("totalValue") or po.get("total_value")
+        if net_val is None:
+            net_val = _calc_net_order_value(items)
+        else:
+            net_val = safe_float(net_val)
+
+        return {
+            "purchaseOrderNumber":       po_num,
+            "purchaseDocumentType":      str(po.get("purchaseDocumentType") or po.get("document_type") or po.get("documentType") or po.get("BSART") or ""),
+            "purchasingGroup":            str(po.get("purchasingGroup") or po.get("purchasing_group") or po.get("EKGRP") or ""),
+            "companyCode":                str(po.get("companyCode") or po.get("company_code") or po.get("BUKRS") or ""),
+            "purchaseOrderDate":          str(po.get("purchaseOrderDate") or po.get("order_date") or po.get("BEDAT") or ""),
+            "netOrderValue":             round(net_val, 2),
+            "purchaseOrganization":       str(po.get("purchaseOrganization") or po.get("purchase_organization") or po.get("EKORG") or ""),
+            "purchaseRequisitionNumber": pr_num,
+            "supplier":                    str(po.get("supplier") or po.get("vendor") or po.get("LIFNR") or ""),
+            "items":                       items,
+            "created_at":                  datetime.utcnow(),
+            "updated_at":                  datetime.utcnow(),
+        }
+
+    if isinstance(data, list):
+        inserted = []
+        for po in data:
+            po_doc = build_po_doc(po)
+            if not po_doc["purchaseOrderNumber"]:
+                continue
+            mongo.db.purchase_orders.update_one(
+                {"purchaseOrderNumber": po_doc["purchaseOrderNumber"]},
+                {"$set": po_doc},
+                upsert=True
+            )
+            inserted.append(po_doc["purchaseOrderNumber"])
+        return success_response(inserted, "POs ingested")
+
+    po_doc = build_po_doc(data)
     if not po_doc["purchaseOrderNumber"]:
-        return error_response("po_number is required", 400)
+        keys_found = list(data.keys()) if isinstance(data, dict) else str(type(data))
+        return error_response(
+            f"Missing required field 'purchaseOrderNumber' (or 'po_number'). Received keys: {keys_found}",
+            400
+        )
 
     mongo.db.purchase_orders.update_one(
         {"purchaseOrderNumber": po_doc["purchaseOrderNumber"]},
