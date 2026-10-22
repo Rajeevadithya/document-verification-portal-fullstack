@@ -25,7 +25,7 @@ STAGE_KEYWORDS = {
         "ebeln", "net order value"
     ],
     "GRN": [
-        "goods receipt", "grn", "goods received", "material document",
+        "goods receipt", "grn", "goods received", "goods received note", "material document",
         "posting date", "document date", "goods receipt note", "grn-",
         "movement type", "migo", "delivery note", "delivery challan",
         "challan", "mat. doc", "mat doc", "mat.doc", "goods movement",
@@ -85,9 +85,9 @@ def _detect_stage(text: str, expected_stage: str = None, reference_number: str =
     #    If primary GRN indicators exist, prioritize GRN over PO.
     grn_primary = [
         "goods receipt", "material document", "grn", "goods received",
-        "goods receipt note", "movement type", "migo", "delivery note",
-        "delivery challan", "challan", "store receipt", "receiving report",
-        "mat doc", "mat.doc", "mat. doc", "goods movement"
+        "goods received note", "goods receipt note", "movement type", "migo",
+        "delivery note", "delivery challan", "challan", "store receipt",
+        "receiving report", "mat doc", "mat.doc", "mat. doc", "goods movement"
     ]
     if any(kw in lower for kw in grn_primary):
         scores["GRN"] = scores.get("GRN", 0) + 5
