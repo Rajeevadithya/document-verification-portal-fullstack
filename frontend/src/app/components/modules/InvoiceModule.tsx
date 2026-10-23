@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Download, Eye, Link2, LoaderCircle, Paperclip } from "lucide-react";
 import { useSearchParams } from "react-router";
 import { FilterBar, createEmptyFilterValues, type FilterValues } from "../FilterBar";
+import { TablePagination } from "../TablePagination";
 import { getDocumentDownloadUrl, getStageRecord, listDocuments, listStageRecords, listValueHelp } from "../../lib/api";
 import { formatCurrency, formatDate, formatFileSize } from "../../lib/format";
 import { ModuleFooterAlerts, SelectionPlaceholder } from "./ModuleExperience";
@@ -436,6 +437,18 @@ export function InvoiceModule() {
     return [];
   }, [filteredRows, hasSearched, syntheticAggregate]);
 
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+
+  useEffect(() => {
+    setPage(1);
+  }, [displayRows]);
+
+  const paginatedRows = useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return displayRows.slice(start, start + pageSize);
+  }, [displayRows, page, pageSize]);
+
   useEffect(() => {
     if (!hasSearched) {
       setAggregate(null);
@@ -565,7 +578,7 @@ export function InvoiceModule() {
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
+    <div style={{ display: "flex", flexDirection: "column", minHeight: "100%" }}>
       <FilterBar
         docType="INV"
         onSearch={(next) => {
@@ -586,7 +599,7 @@ export function InvoiceModule() {
         fieldOptions={{}}
       />
 
-      <div style={{ flex: 1, minHeight: 0, overflowY: "auto", overflowX: "hidden" }}>
+      <div style={{ flex: 1 }}>
         <div style={{ padding: "16px", display: "flex", flexDirection: "column", gap: "16px" }}>
           {!hasSearched ? (
             <SelectionPlaceholder
@@ -599,7 +612,7 @@ export function InvoiceModule() {
                 headers={["Invoice Number", "PR Number", "PO Number", "GRN Number", "Status", "Created"]}
                 emptyMessage="No invoices found for the selected filters."
               >
-                {displayRows.map((row, index) => (
+                {paginatedRows.map((row, index) => (
                   <tr
                     key={`${row.synthetic ? "synthetic" : "live"}-${row.invoiceNumber}`}
                     onClick={() => void selectInvoice(row)}
@@ -618,6 +631,16 @@ export function InvoiceModule() {
                   </tr>
                 ))}
               </DataTable>
+              {displayRows.length > 0 && (
+                <TablePagination
+                  totalItems={displayRows.length}
+                  currentPage={page}
+                  pageSize={pageSize}
+                  pageSizeOptions={[10, 25, 50, 100]}
+                  onPageChange={setPage}
+                  onPageSizeChange={setPageSize}
+                />
+              )}
             </SectionTable>
           )}
 

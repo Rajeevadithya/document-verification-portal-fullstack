@@ -166,7 +166,7 @@ export function Layout() {
           </div>
         </aside>
 
-        <main className="flex-1 overflow-hidden bg-[#f7f7f7]"><Outlet /></main>
+        <main className="flex-1 overflow-y-auto bg-[#f7f7f7]"><Outlet /></main>
       </div>
 
       <ProcurementChatbot apiBase="" />

@@ -86,7 +86,7 @@ function normalizePrItem(item: any): PRItem {
   };
 }
 
-function normalizePoItem(item: any): POItem {
+function normalizePoItem(item: any, parentRecord?: any): POItem {
   const price = toNumber(item?.price ?? item?.net_price);
   const amount = toNumber(item?.amount, price * toNumber(item?.quantity));
   return {
@@ -100,6 +100,12 @@ function normalizePoItem(item: any): POItem {
     delivery_date: asString(item?.delivery_date),
     plant: asString(item?.plant),
     storage_location: asString(item?.storage_location ?? item?.storageLocation ?? item?.storageLoc ?? item?.LGORT),
+    purchase_organization: asString(
+      item?.purchase_organization ??
+      item?.purchaseOrganization ??
+      parentRecord?.purchase_organization ??
+      parentRecord?.purchaseOrganization
+    ),
   };
 }
 
@@ -155,7 +161,7 @@ function normalizePoRecord(record: any): PORecord {
     status: asString(record?.status),
     created_at: asString(record?.created_at),
     updated_at: asString(record?.updated_at),
-    items: Array.isArray(record?.items) ? record.items.map(normalizePoItem) : [],
+    items: Array.isArray(record?.items) ? record.items.map((i: any) => normalizePoItem(i, record)) : [],
     uploaded_document: record?.uploaded_document ? normalizeStageDocument(record.uploaded_document) : null,
     has_document: typeof record?.has_document === "boolean" ? record.has_document : undefined,
   };

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { CalendarDays, ChevronDown, HelpCircle, Search, X } from "lucide-react";
+import { CalendarDays, ChevronDown, ChevronUp, HelpCircle, Search, SlidersHorizontal, X } from "lucide-react";
 import { ValueHelpDialog } from "./ValueHelpDialog";
 import type { FrontendStageKey, ValueHelpItem } from "../lib/types";
 
@@ -235,6 +235,7 @@ function FieldInput({
 export function FilterBar({ docType, onSearch, valueHelpItems, valueHelpSources = {}, values, fieldOptions = {} }: FilterBarProps) {
   const [draft, setDraft] = useState<FilterValues>(createEmptyFilterValues(values));
   const [activeVhField, setActiveVhField] = useState<keyof FilterValues | null>(null);
+  const [isCollapsed, setIsCollapsed] = useState(false);
 
   useEffect(() => {
     setDraft(createEmptyFilterValues(values));
@@ -244,6 +245,7 @@ export function FilterBar({ docType, onSearch, valueHelpItems, valueHelpSources 
   const title = DOC_LABELS[docType];
   const availableDocNumbers = useMemo(() => valueHelpItems.map((item) => item.id), [valueHelpItems]);
   const isDirty = hasAnyFilter(draft);
+  const activeFilterCount = useMemo(() => Object.values(draft).filter((v) => v !== "").length, [draft]);
   const activeVhItems = activeVhField ? valueHelpSources[activeVhField] ?? valueHelpItems : valueHelpItems;
   const activeVhTitle = activeVhField ? fields.find((field) => field.key === activeVhField)?.label ?? title : title;
 
@@ -253,68 +255,169 @@ export function FilterBar({ docType, onSearch, valueHelpItems, valueHelpSources 
     onSearch(cleared);
   };
 
+  const handleFormSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    onSearch(draft);
+  };
+
   return (
     <>
       <div
-        className="px-6 py-5 border-b"
-        style={{ backgroundColor: "#ffffff", borderColor: "#e2e8f0", boxShadow: "0 1px 0 rgba(15, 23, 42, 0.04)" }}
+        className="border-b transition-all duration-200"
+        style={{
+          backgroundColor: "#ffffff",
+          borderColor: "#e2e8f0",
+          boxShadow: "0 1px 3px rgba(15, 23, 42, 0.04)",
+          position: "sticky",
+          top: 0,
+          zIndex: 10,
+        }}
       >
-        <div className="flex items-center justify-between mb-5">
-          <div style={{ fontSize: "14px", fontWeight: "700", color: "#0f172a" }}>Standard</div>
-          <div style={{ fontSize: "12px", color: "#2563eb", fontWeight: "600" }}>{title}</div>
-        </div>
-
-        <div className="flex items-end gap-x-6 gap-y-4 flex-wrap">
-          {fields.map((field) => (
-            <div key={field.key} className="flex flex-col gap-1" style={{ minWidth: field.width }}>
-              <label style={{ fontSize: "11px", color: "#64748b", fontWeight: "600" }}>{field.label}</label>
-              <FieldInput
-                field={field}
-                value={draft[field.key]}
-                onChange={(nextValue) => setDraft((current) => ({ ...current, [field.key]: nextValue }))}
-                options={
-                  field.key === "docNumber" || field.key === "purchaseOrder" || field.key === "materialDocument" || field.key === "prNumber" || field.key === "poNumber" || field.key === "grnNumber"
-                    ? availableDocNumbers
-                    : fieldOptions[field.key] ?? []
-                }
-                onValueHelp={(key) => setActiveVhField(key)}
-              />
+        {isCollapsed ? (
+          /* Compact Collapsed Bar */
+          <div className="px-6 py-3 flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <span style={{ fontSize: "13px", fontWeight: "700", color: "#0f172a" }}>Standard</span>
+              <span style={{ fontSize: "12px", color: "#2563eb", fontWeight: "600" }}>{title}</span>
+              {activeFilterCount > 0 && (
+                <span
+                  style={{
+                    fontSize: "11px",
+                    fontWeight: "600",
+                    backgroundColor: "#eff6ff",
+                    color: "#1d4ed8",
+                    padding: "2px 8px",
+                    borderRadius: "12px",
+                    border: "1px solid #bfdbfe",
+                  }}
+                >
+                  {activeFilterCount} active filter{activeFilterCount > 1 ? "s" : ""}
+                </span>
+              )}
             </div>
-          ))}
 
-          <div className="flex items-center gap-4 ml-auto">
-            <button
-              type="button"
-              onClick={() => onSearch(draft)}
-              className="px-4 py-2"
-              style={{
-                fontSize: "12px",
-                backgroundColor: "#1d4ed8",
-                color: "#ffffff",
-                borderRadius: "12px",
-                minWidth: "56px",
-                height: "40px",
-                fontWeight: "700",
-              }}
-            >
-              Go
-            </button>
-
-            {isDirty ? (
+            <div className="flex items-center gap-3">
               <button
                 type="button"
-                onClick={handleClearFilters}
-                className="flex items-center gap-1 text-left"
-                style={{ fontSize: "12px", color: "#BB0000", fontWeight: "600" }}
+                onClick={() => onSearch(draft)}
+                className="px-4 py-1.5 flex items-center gap-1.5 text-xs font-semibold rounded-lg bg-[#1d4ed8] text-white hover:bg-[#1e40af] transition-colors"
+                style={{ height: "34px", minWidth: "52px", justifyContent: "center" }}
               >
-                <X size={13} />
-                Clear Filters
+                Go
               </button>
-            ) : (
-              <span style={{ fontSize: "12px", color: "#94a3b8", fontWeight: "500" }}>Clear Filters</span>
-            )}
+              {isDirty ? (
+                <button
+                  type="button"
+                  onClick={handleClearFilters}
+                  className="flex items-center gap-1 text-xs font-semibold text-[#BB0000] hover:text-[#990000] transition-colors px-2 py-1"
+                >
+                  <X size={13} />
+                  Clear Filters
+                </button>
+              ) : null}
+              <button
+                type="button"
+                onClick={() => setIsCollapsed(false)}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 transition-colors"
+                style={{ height: "34px" }}
+                title="Expand filters"
+              >
+                <SlidersHorizontal size={13} color="#1d4ed8" />
+                <span>Show Filters</span>
+                <ChevronDown size={14} color="#64748b" />
+              </button>
+            </div>
           </div>
-        </div>
+        ) : (
+          /* Full Expanded Bar */
+          <form onSubmit={handleFormSubmit} className="px-6 py-4">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <span style={{ fontSize: "14px", fontWeight: "700", color: "#0f172a" }}>Standard</span>
+                <span style={{ fontSize: "12px", color: "#2563eb", fontWeight: "600" }}>{title}</span>
+                {activeFilterCount > 0 && (
+                  <span
+                    style={{
+                      fontSize: "11px",
+                      fontWeight: "600",
+                      backgroundColor: "#eff6ff",
+                      color: "#1d4ed8",
+                      padding: "2px 8px",
+                      borderRadius: "12px",
+                      border: "1px solid #bfdbfe",
+                    }}
+                  >
+                    {activeFilterCount} active
+                  </span>
+                )}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setIsCollapsed(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 transition-colors"
+                style={{ height: "32px" }}
+                title="Collapse filters"
+              >
+                <SlidersHorizontal size={13} color="#64748b" />
+                <span>Hide Filters</span>
+                <ChevronUp size={14} color="#64748b" />
+              </button>
+            </div>
+
+            <div className="flex items-end gap-x-6 gap-y-4 flex-wrap">
+              {fields.map((field) => (
+                <div key={field.key} className="flex flex-col gap-1" style={{ minWidth: field.width }}>
+                  <label style={{ fontSize: "11px", color: "#64748b", fontWeight: "600" }}>{field.label}</label>
+                  <FieldInput
+                    field={field}
+                    value={draft[field.key]}
+                    onChange={(nextValue) => setDraft((current) => ({ ...current, [field.key]: nextValue }))}
+                    options={
+                      field.key === "docNumber" || field.key === "purchaseOrder" || field.key === "materialDocument" || field.key === "prNumber" || field.key === "poNumber" || field.key === "grnNumber"
+                        ? availableDocNumbers
+                        : fieldOptions[field.key] ?? []
+                    }
+                    onValueHelp={(key) => setActiveVhField(key)}
+                  />
+                </div>
+              ))}
+
+              <div className="flex items-center gap-4 ml-auto pt-2">
+                <button
+                  type="submit"
+                  className="px-4 py-2"
+                  style={{
+                    fontSize: "12px",
+                    backgroundColor: "#1d4ed8",
+                    color: "#ffffff",
+                    borderRadius: "12px",
+                    minWidth: "56px",
+                    height: "40px",
+                    fontWeight: "700",
+                    cursor: "pointer",
+                  }}
+                >
+                  Go
+                </button>
+
+                {isDirty ? (
+                  <button
+                    type="button"
+                    onClick={handleClearFilters}
+                    className="flex items-center gap-1 text-left"
+                    style={{ fontSize: "12px", color: "#BB0000", fontWeight: "600", cursor: "pointer" }}
+                  >
+                    <X size={13} />
+                    Clear Filters
+                  </button>
+                ) : (
+                  <span style={{ fontSize: "12px", color: "#94a3b8", fontWeight: "500" }}>Clear Filters</span>
+                )}
+              </div>
+            </div>
+          </form>
+        )}
       </div>
 
       {activeVhField && (

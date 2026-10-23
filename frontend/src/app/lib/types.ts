@@ -144,6 +144,7 @@ export type POItem = {
   delivery_date: string;
   plant: string;
   storage_location?: string;
+  purchase_organization?: string;
 };
 
 export type PORecord = {

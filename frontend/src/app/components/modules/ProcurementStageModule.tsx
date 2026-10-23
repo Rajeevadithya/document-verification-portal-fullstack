@@ -13,6 +13,7 @@ import {
   Paperclip,
 } from "lucide-react";
 import { FilterBar, createEmptyFilterValues, type FilterValues } from "../FilterBar";
+import { TablePagination } from "../TablePagination";
 import { useNavigate, useSearchParams } from "react-router";
 import {
   deleteDocument,
@@ -555,7 +556,7 @@ function ExpandedRowContent({
 function RecordsTable({
   stage, stageKey, records, config, expandedReferences, selectedReference,
   documentsByReference, loadingReferences, subTab, uploading, error,
-  onRowClick, onUpload, onReplace, onDelete,
+  onRowClick, onToggleExpand, onUpload, onReplace, onDelete,
 }: {
   stage: Exclude<FrontendStageKey, "INV">; stageKey: StageKey;
   records: ProcurementRecord[]; config: StageModuleConfig;
@@ -564,29 +565,57 @@ function RecordsTable({
   subTab: "upload" | "change" | "view"; uploading: boolean;
   error?: string | null;
   onRowClick: (ref: string) => void;
+  onToggleExpand: (ref: string) => void;
   onUpload: (ref: string, files: File[]) => Promise<void>;
   onReplace: (ref: string, docId: string) => void;
   onDelete: (docId: string) => Promise<void>;
 }) {
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+
+  useEffect(() => {
+    setPage(1);
+  }, [records]);
+
   const headers = getHeaders(stage);
+  const paginatedRecords = useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return records.slice(start, start + pageSize);
+  }, [records, page, pageSize]);
 
   return (
     <div style={{ border: "1px solid #d9d9d9", borderRadius: "12px", overflow: "hidden", backgroundColor: "#ffffff" }}>
       {/* Header bar */}
-      <div style={{ padding: "12px 16px", borderBottom: "1px solid #e2e8f0", backgroundColor: "#ffffff", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <span style={{ fontSize: "14px", fontWeight: "700", color: "#0f172a" }}>
-          {config.title}s ({records.length})
+      <div style={{ padding: "12px 16px", borderBottom: "1px solid #e2e8f0", backgroundColor: "#ffffff", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "8px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          <span style={{ fontSize: "14px", fontWeight: "700", color: "#0f172a" }}>
+            {config.title}s ({records.length})
+          </span>
+          {subTab === "upload" && (
+            <span style={{ fontSize: "11px", fontWeight: "700", color: "#0070F2", backgroundColor: "#eff6ff", border: "1px solid #bfdbfe", padding: "2px 8px", borderRadius: "12px", display: "inline-flex", alignItems: "center", gap: "4px" }}>
+              <Upload size={11} /> Upload Document Mode
+            </span>
+          )}
+          {subTab === "change" && (
+            <span style={{ fontSize: "11px", fontWeight: "700", color: "#b45309", backgroundColor: "#fef3c7", border: "1px solid #fde68a", padding: "2px 8px", borderRadius: "12px", display: "inline-flex", alignItems: "center", gap: "4px" }}>
+              <Edit size={11} /> Change Document Mode
+            </span>
+          )}
+        </div>
+        <span style={{ fontSize: "11px", color: "#94a3b8" }}>
+          {subTab === "upload" ? "Click 'Upload' on any row to attach files, or click row for details" : "Click a row to open its detail page"}
         </span>
-        <span style={{ fontSize: "11px", color: "#94a3b8" }}>Click a row to open its detail page</span>
       </div>
 
       {/* Scrollable table */}
       <div style={{ overflowX: "auto" }}>
-        <table style={{ borderCollapse: "collapse", width: "100%", minWidth: stage === "PR" ? "900px" : stage === "PO" ? "1500px" : "750px" }}>
+        <table style={{ borderCollapse: "collapse", width: "100%", minWidth: stage === "PR" ? "950px" : stage === "PO" ? "1500px" : "800px" }}>
           <thead>
             <tr style={{ borderBottom: "2px solid #d9d9d9" }}>
               {headers.map((h) => <th key={h} style={TH}>{h}</th>)}
-              <th style={{ ...TH, width: "44px", textAlign: "center", borderRight: "none" }} />
+              <th style={{ ...TH, minWidth: subTab === "upload" ? "110px" : "44px", textAlign: "center", borderRight: "none" }}>
+                {subTab === "upload" ? "Actions" : ""}
+              </th>
             </tr>
           </thead>
 
@@ -597,7 +626,7 @@ function RecordsTable({
                   No records match the selected filters.
                 </td>
               </tr>
-            ) : records.map((record, idx) => {
+            ) : paginatedRecords.map((record, idx) => {
               const ref = getReference(record);
               const expanded = expandedReferences.includes(ref);
               const isSelected = selectedReference === ref;
@@ -614,8 +643,47 @@ function RecordsTable({
                     onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = rowBg; }}
                   >
                     <SummaryRowCells record={record} stage={stage} />
-                    <td style={{ ...TD, width: "44px", textAlign: "center", borderRight: "none" }}>
-                      {expanded ? <ChevronDown size={16} color="#0070F2" /> : <ChevronRight size={16} color="#94a3b8" />}
+                    <td style={{ ...TD, minWidth: subTab === "upload" ? "110px" : "44px", textAlign: "center", borderRight: "none" }}>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "8px" }}>
+                        {subTab === "upload" && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onToggleExpand(ref);
+                            }}
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "4px",
+                              padding: "4px 10px",
+                              backgroundColor: expanded ? "#eff6ff" : "#0070F2",
+                              color: expanded ? "#0070F2" : "#ffffff",
+                              border: expanded ? "1px solid #bfdbfe" : "none",
+                              borderRadius: "6px",
+                              fontSize: "11px",
+                              fontWeight: "700",
+                              cursor: "pointer",
+                              whiteSpace: "nowrap",
+                            }}
+                            title={expanded ? "Close upload panel" : "Upload document for this record"}
+                          >
+                            <Upload size={12} />
+                            {expanded ? "Close" : "Upload"}
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onToggleExpand(ref);
+                          }}
+                          style={{ background: "none", border: "none", cursor: "pointer", padding: "2px", display: "flex" }}
+                          title={expanded ? "Collapse row" : "Expand row"}
+                        >
+                          {expanded ? <ChevronDown size={16} color="#0070F2" /> : <ChevronRight size={16} color="#94a3b8" />}
+                        </button>
+                      </div>
                     </td>
                   </tr>
 
@@ -638,6 +706,18 @@ function RecordsTable({
           </tbody>
         </table>
       </div>
+
+      {/* Pagination */}
+      {records.length > 0 && (
+        <TablePagination
+          totalItems={records.length}
+          currentPage={page}
+          pageSize={pageSize}
+          pageSizeOptions={[10, 25, 50, 100]}
+          onPageChange={setPage}
+          onPageSizeChange={setPageSize}
+        />
+      )}
     </div>
   );
 }
@@ -722,6 +802,13 @@ export function ProcurementStageModule({ config }: { config: StageModuleConfig }
   // ── Row click → navigate to standalone detail page ─────────────────────────
   const handleRowClick = (ref: string) => {
     navigate(`/documents/${config.frontendStage.toLowerCase()}/${encodeURIComponent(ref)}?action=${subTab}`);
+  };
+
+  const handleToggleExpand = (ref: string) => {
+    setExpandedReferences((prev) =>
+      prev.includes(ref) ? prev.filter((r) => r !== ref) : [...prev, ref]
+    );
+    void fetchDocs(ref);
   };
 
   // ── Filters ────────────────────────────────────────────────────────────────
@@ -814,7 +901,7 @@ export function ProcurementStageModule({ config }: { config: StageModuleConfig }
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
+    <div style={{ display: "flex", flexDirection: "column", minHeight: "100%" }}>
       <FilterBar
         docType={config.frontendStage}
         onSearch={applyFilters}
@@ -823,8 +910,8 @@ export function ProcurementStageModule({ config }: { config: StageModuleConfig }
         fieldOptions={fieldOptions}
       />
 
-      {/* Scrollable content */}
-      <div style={{ flex: 1, minHeight: 0, overflowY: "auto", overflowX: "hidden" }}>
+      {/* Content */}
+      <div style={{ flex: 1 }}>
         <div style={{ padding: "16px", display: "flex", flexDirection: "column", gap: "16px" }}>
           {!hasSearched ? (
             <SelectionPlaceholder
@@ -845,6 +932,7 @@ export function ProcurementStageModule({ config }: { config: StageModuleConfig }
               uploading={uploading}
               error={error}
               onRowClick={handleRowClick}
+              onToggleExpand={handleToggleExpand}
               onUpload={handleUpload}
               onReplace={handleReplace}
               onDelete={handleDelete}

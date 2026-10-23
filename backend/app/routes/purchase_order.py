@@ -75,6 +75,7 @@ def _format_po_response(po_doc):
         ordered["price"]               = item.get("price", "")
         ordered["amount"]              = item.get("amount", "")
         ordered["plant"]               = str(item.get("plant", "")).strip()
+        ordered["purchaseOrganization"] = str(item.get("purchaseOrganization") or item.get("purchase_organization") or serialized.get("purchaseOrganization") or serialized.get("purchase_organization") or serialized.get("EKORG") or "").strip()
         return ordered
 
     items = [reorder_item(i) for i in serialized.get("items", [])]
@@ -91,7 +92,7 @@ def _format_po_response(po_doc):
     data["companyCode"]               = str(serialized.get("companyCode", "")).strip()
     data["purchaseOrderDate"]         = str(serialized.get("purchaseOrderDate", "")).strip()
     data["netOrderValue"]             = net_order_value
-    data["purchaseOrganization"]      = str(serialized.get("purchaseOrganization", "")).strip()
+    data["purchaseOrganization"]      = str(serialized.get("purchaseOrganization") or serialized.get("purchase_organization") or serialized.get("EKORG") or "").strip()
     data["purchaseRequisitionNumber"] = str(serialized.get("purchaseRequisitionNumber", "")).strip()
     data["supplier"]                  = supplier
     data["vendor"]                    = supplier

@@ -36,13 +36,13 @@ import type {
 type ProcurementRecord = PRRecord | PORecord | GRNRecord;
 
 function isPRRecord(r: ProcurementRecord): r is PRRecord {
-  return "pr_number" in r && "document_type" in r;
+  return "pr_number" in r && !("po_number" in r) && !("grn_number" in r);
 }
 function isPORecord(r: ProcurementRecord): r is PORecord {
-  return "po_number" in r && "vendor" in r && "company_code" in r;
+  return "po_number" in r && !("grn_number" in r);
 }
 function isGRNRecord(r: ProcurementRecord): r is GRNRecord {
-  return "grn_number" in r && "document_date" in r && "posting_date" in r;
+  return "grn_number" in r;
 }
 function getTotalValue(r: ProcurementRecord) {
   if (isPRRecord(r)) return r.items.reduce((s, i) => s + i.amount, 0);
@@ -200,10 +200,10 @@ function PRItemsTable({ record }: { record: PRRecord }) {
 }
 
 function POItemsTable({ record }: { record: PORecord }) {
-  const cols = ["Item Number", "Material", "Material Description", "Quantity", "Price", "Amount", "Plant"];
+  const cols = ["Item Number", "Material", "Material Description", "Quantity", "Price", "Amount", "Plant", "Purchase Organization"];
   return (
     <div style={{ overflowX: "auto" }}>
-      <table style={{ borderCollapse: "collapse", width: "100%", minWidth: "900px" }}>
+      <table style={{ borderCollapse: "collapse", width: "100%", minWidth: "1000px" }}>
         <thead>
           <tr>{cols.map((c) => <th key={c} style={TH}>{c}</th>)}</tr>
         </thead>
@@ -216,7 +216,8 @@ function POItemsTable({ record }: { record: PORecord }) {
               <td style={{ ...TD, textAlign: "right" }}>{item.quantity.toLocaleString()}</td>
               <td style={{ ...TD, textAlign: "right" }}>{formatCurrency(item.price)}</td>
               <td style={{ ...TD, textAlign: "right", fontWeight: "600" }}>{formatCurrency(item.amount)}</td>
-              <td style={{ ...TD, borderRight: "none" }}>{item.plant}</td>
+              <td style={TD}>{item.plant}</td>
+              <td style={{ ...TD, borderRight: "none" }}>{item.purchase_organization || record.purchase_organization || "—"}</td>
             </tr>
           ))}
         </tbody>
@@ -738,6 +739,7 @@ export function ProcurementDetailPage() {
               {isPORecord(record) && <>
                 <MetaChip label="Supplier" value={record.vendor || "—"} />
                 <MetaChip label="Company Code" value={record.company_code || "—"} />
+                <MetaChip label="Purchase Org" value={record.purchase_organization || "—"} />
                 <MetaChip label="Purchase Group" value={record.purchase_group || "—"} />
               </>}
               {isGRNRecord(record) && <>
