@@ -3,6 +3,8 @@ import { useNavigate } from "react-router";
 import {
   CheckCircle2,
   ChevronDown,
+  ChevronUp,
+  ExternalLink,
   FileText,
   Loader2,
   MessageSquare,
@@ -55,9 +57,16 @@ function formatTime(d: Date) {
 }
 
 function ocrColor(status: string): { color: string; bg: string } {
-  if (status === "VALID") return { color: "#107E3E", bg: "#EEF5EC" };
-  if (status === "INVALID") return { color: "#BB0000", bg: "#FBEAEA" };
-  if (status === "REVIEW") return { color: "#E9730C", bg: "#FEF3E8" };
+  const upper = (status || "").toUpperCase();
+  if (["VALID", "APPROVED", "POSTED", "COMPLETED", "SENT_TO_MIRO", "CLOSED"].includes(upper)) {
+    return { color: "#107E3E", bg: "#EEF5EC" };
+  }
+  if (["REVIEW", "PENDING", "IN_PROGRESS"].includes(upper)) {
+    return { color: "#E9730C", bg: "#FEF3E8" };
+  }
+  if (["INVALID", "REJECTED", "MISSING", "ERROR"].includes(upper)) {
+    return { color: "#BB0000", bg: "#FBEAEA" };
+  }
   return { color: "#6A6D70", bg: "#f5f5f5" };
 }
 
@@ -99,42 +108,152 @@ function resolveRoute(screen: string, id?: string): string | null {
   return null;
 }
 
+// Maps arbitrary data item returned in bot response to a direct page route
+function resolveItemRoute(item: Record<string, unknown>): string | null {
+  if (typeof item.route === "string" && item.route) return item.route;
+  if (typeof item.url === "string" && item.url) return item.url;
+
+  let stage = String(item.stage ?? item.type ?? "").toUpperCase().trim();
+  let rawRef = String(
+    item.reference ??
+      item.reference_number ??
+      item.pr_number ??
+      item.purchaseRequisitionNumber ??
+      item.po_number ??
+      item.purchaseOrderNumber ??
+      item.grn_number ??
+      item.materialDocumentNumber ??
+      item.invoice_number ??
+      ""
+  ).trim();
+
+  // If stage isn't explicit, infer from properties or ref pattern
+  if (!stage) {
+    if (item.pr_number || item.purchaseRequisitionNumber || /^PR[-\s]?/i.test(rawRef)) {
+      stage = "PR";
+    } else if (item.po_number || item.purchaseOrderNumber || /^PO[-\s]?/i.test(rawRef)) {
+      stage = "PO";
+    } else if (item.grn_number || item.materialDocumentNumber || /^GRN[-\s]?/i.test(rawRef)) {
+      stage = "GRN";
+    } else if (item.invoice_number || /^INV[-\s]?/i.test(rawRef)) {
+      stage = "INVOICE";
+    }
+  }
+
+  // Strip stage prefix if present in rawRef (e.g. "PR-10000010" or "PR 10000010" -> "10000010")
+  let cleanRef = rawRef;
+  if (/^(PR|PO|GRN|INV)[-\s]/i.test(cleanRef)) {
+    cleanRef = cleanRef.replace(/^(PR|PO|GRN|INV)[-\s]?/i, "").trim();
+  }
+
+  const hasValidRef = cleanRef && cleanRef !== "—" && cleanRef !== "undefined" && cleanRef !== "null";
+
+  if (stage === "PR") {
+    return hasValidRef ? `/documents/pr/${encodeURIComponent(cleanRef)}` : `/documents?tab=PR`;
+  }
+  if (stage === "PO") {
+    return hasValidRef ? `/documents/po/${encodeURIComponent(cleanRef)}` : `/documents?tab=PO`;
+  }
+  if (stage === "GRN") {
+    return hasValidRef ? `/documents/grn/${encodeURIComponent(cleanRef)}` : `/documents?tab=GRN`;
+  }
+  if (stage === "INVOICE" || stage === "INV") {
+    return hasValidRef ? `/documents?tab=INV&doc=${encodeURIComponent(cleanRef)}` : `/documents?tab=INV`;
+  }
+  if (stage === "NOTIFICATION" || stage === "NOTIFICATIONS") {
+    return "/";
+  }
+
+  return null;
+}
+
 // ── Data card renderer ─────────────────────────────────────────────────────────
-function DataCard({ item }: { item: Record<string, unknown> }) {
-  const stage = String(item.stage ?? item.type ?? "");
-  const ref =
+function DataCard({
+  item,
+  onNavigate,
+}: {
+  item: Record<string, unknown>;
+  onNavigate: (route: string) => void;
+}) {
+  const [hovered, setHovered] = useState(false);
+  const stage = String(item.stage ?? item.type ?? "").trim();
+  const rawRef =
     String(
       item.reference ??
         item.pr_number ??
+        item.purchaseRequisitionNumber ??
         item.po_number ??
+        item.purchaseOrderNumber ??
         item.grn_number ??
+        item.materialDocumentNumber ??
         item.invoice_number ??
         item.reference_number ??
         ""
-    ) || "—";
-  const status = String(item.status ?? item.ocr_status ?? "");
-  const name = String(item.original_filename ?? item.message ?? "");
+    ).trim() || "—";
+
+  const status = String(item.status ?? item.ocr_status ?? "").trim();
+  const name = String(item.original_filename ?? item.message ?? "").trim();
   const { color, bg } = ocrColor(status);
+  const route = resolveItemRoute(item);
+  const isClickable = Boolean(route);
+
+  // Avoid repetitive prefix e.g. "PR PR-10000010"
+  const displayLabel = stage
+    ? rawRef.toUpperCase().startsWith(stage.toUpperCase())
+      ? rawRef
+      : `${stage} ${rawRef}`
+    : rawRef;
 
   return (
     <div
+      role={isClickable ? "button" : undefined}
+      tabIndex={isClickable ? 0 : undefined}
+      onClick={() => {
+        if (route) {
+          onNavigate(route);
+        }
+      }}
+      onKeyDown={(e) => {
+        if (isClickable && (e.key === "Enter" || e.key === " ")) {
+          e.preventDefault();
+          if (route) onNavigate(route);
+        }
+      }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      title={isClickable ? `Click to open ${displayLabel}` : undefined}
       style={{
-        border: "1px solid #e5e5e5",
-        borderRadius: "3px",
+        border: hovered && isClickable ? "1px solid #0070F2" : "1px solid #e5e5e5",
+        borderRadius: "4px",
         padding: "6px 10px",
         marginBottom: "4px",
-        backgroundColor: "#fafafa",
+        backgroundColor: hovered && isClickable ? "#f0f7ff" : "#fafafa",
         fontSize: "11px",
         display: "flex",
         justifyContent: "space-between",
         alignItems: "center",
         gap: "6px",
+        cursor: isClickable ? "pointer" : "default",
+        transition: "all 0.15s ease",
+        transform: hovered && isClickable ? "translateY(-1px)" : "none",
+        boxShadow: hovered && isClickable ? "0 2px 6px rgba(0, 112, 242, 0.12)" : "none",
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", gap: "6px", overflow: "hidden" }}>
-        <FileText size={11} color="#8a8b8c" style={{ flexShrink: 0 }} />
-        <span style={{ color: "#0070F2", fontWeight: 600, flexShrink: 0 }}>
-          {stage} {ref}
+      <div style={{ display: "flex", alignItems: "center", gap: "6px", overflow: "hidden", flex: 1 }}>
+        <FileText
+          size={12}
+          color={hovered && isClickable ? "#0070F2" : "#8a8b8c"}
+          style={{ flexShrink: 0, transition: "color 0.15s ease" }}
+        />
+        <span
+          style={{
+            color: "#0070F2",
+            fontWeight: 600,
+            flexShrink: 0,
+            textDecoration: hovered && isClickable ? "underline" : "none",
+          }}
+        >
+          {displayLabel}
         </span>
         {name && (
           <span
@@ -143,27 +262,37 @@ function DataCard({ item }: { item: Record<string, unknown> }) {
               overflow: "hidden",
               textOverflow: "ellipsis",
               whiteSpace: "nowrap",
-              maxWidth: "120px",
+              maxWidth: "110px",
             }}
           >
             {name}
           </span>
         )}
       </div>
-      {status && (
-        <span
-          style={{
-            color,
-            backgroundColor: bg,
-            padding: "1px 5px",
-            borderRadius: "2px",
-            fontWeight: 600,
-            flexShrink: 0,
-          }}
-        >
-          {status}
-        </span>
-      )}
+
+      <div style={{ display: "flex", alignItems: "center", gap: "6px", flexShrink: 0 }}>
+        {status && (
+          <span
+            style={{
+              color,
+              backgroundColor: bg,
+              padding: "1px 6px",
+              borderRadius: "3px",
+              fontWeight: 600,
+              fontSize: "10px",
+            }}
+          >
+            {status}
+          </span>
+        )}
+        {isClickable && (
+          <ExternalLink
+            size={11}
+            color={hovered ? "#0070F2" : "#a0a4a8"}
+            style={{ transition: "color 0.15s ease" }}
+          />
+        )}
+      </div>
     </div>
   );
 }
@@ -172,16 +301,24 @@ function DataCard({ item }: { item: Record<string, unknown> }) {
 function MessageBubble({
   msg,
   onNavigateTo,
+  onOpenRoute,
 }: {
   msg: Message;
   onNavigateTo: (screen: string, id?: string) => void;
+  onOpenRoute: (route: string) => void;
 }) {
+  const [isExpanded, setIsExpanded] = useState(false);
   const isUser = msg.from === "user";
   const isError = msg.from === "error";
   const resp = msg.response;
-  const hasData = resp && resp.data && resp.data.length > 0;
+  const dataList = resp?.data ?? [];
+  const hasData = dataList.length > 0;
   const canNavigate = resp?.action?.type === "NAVIGATE" && resp.action.screen !== "NONE";
   const route = canNavigate ? resolveRoute(resp!.action.screen, resp!.action.id) : null;
+
+  const previewLimit = 6;
+  const hasMore = dataList.length > previewLimit;
+  const visibleItems = isExpanded ? dataList : dataList.slice(0, previewLimit);
 
   return (
     <div
@@ -215,13 +352,62 @@ function MessageBubble({
 
       {hasData && (
         <div style={{ maxWidth: "88%", width: "100%" }}>
-          {resp!.data.slice(0, 6).map((item, i) => (
-            <DataCard key={i} item={item} />
-          ))}
-          {resp!.data.length > 6 && (
-            <div style={{ fontSize: "11px", color: "#8a8b8c", padding: "2px 6px" }}>
-              +{resp!.data.length - 6} more records
-            </div>
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              maxHeight: isExpanded && dataList.length > 6 ? "260px" : undefined,
+              overflowY: isExpanded && dataList.length > 6 ? "auto" : undefined,
+              paddingRight: isExpanded && dataList.length > 6 ? "3px" : undefined,
+            }}
+          >
+            {visibleItems.map((item, i) => (
+              <DataCard key={i} item={item} onNavigate={onOpenRoute} />
+            ))}
+          </div>
+
+          {hasMore && (
+            <button
+              type="button"
+              onClick={() => setIsExpanded((prev) => !prev)}
+              style={{
+                width: "100%",
+                padding: "6px 8px",
+                marginTop: "4px",
+                border: "1px dashed #B5D4F4",
+                borderRadius: "4px",
+                backgroundColor: "#F0F7FF",
+                color: "#0070F2",
+                fontSize: "11px",
+                fontWeight: 600,
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: "4px",
+                transition: "all 0.15s ease",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = "#E1EFFF";
+                e.currentTarget.style.borderColor = "#0070F2";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = "#F0F7FF";
+                e.currentTarget.style.borderColor = "#B5D4F4";
+              }}
+            >
+              {isExpanded ? (
+                <>
+                  <ChevronUp size={13} />
+                  Show fewer records
+                </>
+              ) : (
+                <>
+                  <ChevronDown size={13} />
+                  +{dataList.length - previewLimit} more records
+                </>
+              )}
+            </button>
           )}
         </div>
       )}
@@ -288,6 +474,10 @@ export function ProcurementChatbot({ apiBase = "" }: Props) {
       // Close or minimise the chatbot so the page is visible
       setMinimized(true);
     }
+  };
+
+  const handleOpenRoute = (route: string) => {
+    navigate(route);
   };
 
   const send = async (text: string) => {
@@ -472,7 +662,12 @@ export function ProcurementChatbot({ apiBase = "" }: Props) {
                 }}
               >
                 {messages.map((msg) => (
-                  <MessageBubble key={msg.id} msg={msg} onNavigateTo={handleNavigate} />
+                  <MessageBubble
+                    key={msg.id}
+                    msg={msg}
+                    onNavigateTo={handleNavigate}
+                    onOpenRoute={handleOpenRoute}
+                  />
                 ))}
                 {loading && (
                   <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "8px" }}>
